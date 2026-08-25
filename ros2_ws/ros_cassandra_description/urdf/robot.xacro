@@ -1,0 +1,5 @@
+<?xml version="1.0" ?>
+<robot name="ros_cassandra" xmlns:xacro="http://www.ros.org/wiki/xacro">
+    <xacro:include filename="$(find ros_cassandra_description)/urdf/base_urdf.xacro" />
+    <xacro:include filename="$(find ros_cassandra_description)/urdf/control_cassandra.xacro" />
+</robot>

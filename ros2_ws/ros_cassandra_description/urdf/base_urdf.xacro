@@ -1,0 +1,586 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+    <xacro:arg
+        name="mesh_base_url"
+        default="package://ros_cassandra_description/meshes"
+    />
+    <link name="base_link"></link>
+    
+    <!-- Link - chassis -->
+    <link name="link_chassis">
+        <visual>
+            <origin xyz="-0.065 -0.013 0.2" rpy="1.57 0 1.57"/>
+            <geometry>
+                <!-- <box size="0.22 0.14 0.25" /> -->
+                <mesh filename="$(arg mesh_base_url)/body.stl" scale="0.00111 0.00111 0.0011"/>
+            </geometry>
+            <material name="Red">
+                <color rgba="1 0 0 1" />
+            </material>
+        </visual>
+
+        <collision>
+            <origin xyz="0 0 -0.08" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.25 0.25 0.1" />
+            </geometry>
+        </collision>
+
+        <inertial>
+            <mass value="10"/>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <inertia ixx="0.1" ixy="0" ixz="0" iyy="0.1" iyz="0" izz="0.1"/>
+        </inertial>
+    </link>
+
+    <joint name="base_link_joint" type="fixed">
+        <origin rpy="0 0 0" xyz="0 0 0.142" />
+        <parent link="base_link" />
+        <child link="link_chassis" />
+    </joint>
+
+    <link name="lower_torso">
+        <visual>
+            <origin xyz="-0.07 -0.013 -0.02" rpy="1.57 0 1.57"/>
+            <geometry>
+                <!-- <box size="0.22 0.14 0.25" /> -->
+                <mesh filename="$(arg mesh_base_url)/lower_torso.stl" scale="0.00111 0.00111 0.0011"/>
+            </geometry>
+            <material name="Black">
+                <color rgba="1 0 0 1" />
+            </material>
+        </visual>
+
+        <collision>
+            <origin xyz="-0.02 0 -0.02" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.11 0.11 0.1" />
+            </geometry>
+        </collision>
+
+        <inertial>
+            <mass value="10"/>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <inertia ixx="0.1" ixy="0" ixz="0" iyy="0.1" iyz="0" izz="0.1"/>
+        </inertial>
+    </link>
+
+    <joint name="lower_torso_joint" type="fixed">
+        <origin rpy="0 0 0" xyz="0 0 0.22" />
+        <parent link="link_chassis" />
+        <child link="lower_torso" />
+    </joint>
+
+     <link name="upper_torso">
+        <visual>
+            <origin xyz="-0.13 0 -0.042" rpy="0 0 -1.57"/>
+            <geometry>
+                <!-- <box size="0.22 0.14 0.25" /> -->
+                <mesh filename="$(arg mesh_base_url)/upper_torso.stl" scale="0.00111 0.00111 0.0011"/>
+            </geometry>
+            <material name="Black">
+                <color rgba="1 0 0 1" />
+            </material>
+        </visual>
+
+        <collision>
+            <origin xyz="0 0.01 0.11" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.07 0.09 0.14" />
+            </geometry>
+        </collision>
+
+        <inertial>
+            <mass value="10"/>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <inertia ixx="0.1" ixy="0" ixz="0" iyy="0.1" iyz="0" izz="0.1"/>
+        </inertial>
+    </link>
+
+    <joint name="upper_torso_joint" type="revolute">
+        <origin xyz="-0.02 0 0" rpy="0 0 0"/>
+        <parent link="lower_torso"/>
+        <child link="upper_torso"/>
+        <axis xyz="0 0 1"/>
+        <limit lower="-1.15" upper="1.4" velocity="100" effort="100"/>
+    </joint>
+
+    <!-- Joint - pointcloud -->
+    <joint name="pointcloud_link_joint" type="fixed">
+        <origin rpy="0 0 0" xyz="0.051 0.0 0"/>
+        <parent link="link_chassis"/>
+        <child link="pointcloud_link"/>
+        <axis xyz="0 0 0"/>
+    </joint>
+
+    <!-- Link - pointcloud -->
+    <link name="pointcloud_link"></link>
+
+    <!-- Joint - left wheel -->
+    <joint name="joint_front_left_wheel" type="continuous">
+        <origin rpy="0 0 0" xyz="0.064 0.12 -0.12"/>
+        <child link="left_front_wheel"/>
+        <parent link="link_chassis"/>
+        <axis rpy="0 0 0" xyz="0 1 0"/>
+        <limit effort="10000" velocity="1000"/>
+        <joint_properties damping="1.0" friction="1.0"/>
+    </joint>
+
+    <!-- Link - left wheel -->
+    <link name="left_front_wheel">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+            <!-- <cylinder length="0.001" radius="0.015"/> -->
+            <mesh filename="$(arg mesh_base_url)/wheel.stl" scale="0.00111 0.00111 0.0011"/>
+            </geometry>
+        </visual>
+
+        <collision>
+            <origin rpy="0 1.5707 1.5707" xyz="0 0 0"/>
+            <geometry>
+            <cylinder length="0.03" radius="0.03"/>
+            </geometry>
+        </collision>
+
+        <inertial>
+            <origin rpy="0 1.5707 1.5707" xyz="0 0 0"/>
+            <mass value="0.05"/>
+            <inertia ixx="1.531666666666667e-05" ixy="0" ixz="0" iyy="1.531666666666667e-05" iyz="0" izz="3.0625000000000006e-05"/>
+        </inertial>
+    </link>
+
+    <!-- Joint - right wheel -->
+    <joint name="joint_front_right_wheel" type="continuous">
+        <origin rpy="0 0 0" xyz="0.064 -0.12 -0.12"/>
+        <child link="right_front_wheel"/>
+        <parent link="link_chassis"/>
+        <axis rpy="0 0 0" xyz="0 1 0"/>
+        <limit effort="10000" velocity="1000"/>
+        <joint_properties damping="1.0" friction="1.0"/>
+    </joint>
+
+    <!-- Link - right wheel -->
+    <link name="right_front_wheel">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+            <!-- <cylinder length="0.001" radius="0.015"/> -->
+            <mesh filename="$(arg mesh_base_url)/wheel.stl" scale="0.00111 0.00111 0.0011"/>
+            </geometry>
+        </visual>
+
+        <collision>
+            <origin rpy="0 1.5707 1.5707" xyz="0 0 0"/>
+            <geometry>
+            <cylinder length="0.03" radius="0.03"/>
+            </geometry>
+        </collision>
+
+        <inertial>
+            <origin rpy="0 1.5707 1.5707" xyz="0 0 0"/>
+            <mass value="0.05"/>
+            <inertia ixx="1.531666666666667e-05" ixy="0" ixz="0" iyy="1.531666666666667e-05" iyz="0" izz="3.0625000000000006e-05"/>
+        </inertial>
+    </link>
+
+    <!-- Joint - left wheel -->
+    <joint name="joint_rear_left_wheel" type="continuous">
+        <origin rpy="0 0 0" xyz="-0.1 0.12 -0.12"/>
+        <child link="left_rear_wheel"/>
+        <parent link="link_chassis"/>
+        <axis rpy="0 0 0" xyz="0 1 0"/>
+        <limit effort="10000" velocity="1000"/>
+        <joint_properties damping="1.0" friction="1.0"/>
+    </joint>
+
+    <!-- Link - left wheel -->
+    <link name="left_rear_wheel">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+            <!-- <cylinder length="0.001" radius="0.015"/> -->
+            <mesh filename="$(arg mesh_base_url)/wheel.stl" scale="0.00111 0.00111 0.0011"/>
+            </geometry>
+        </visual>
+
+        <collision>
+            <origin rpy="0 1.5707 1.5707" xyz="0 0 0"/>
+            <geometry>
+            <cylinder length="0.03" radius="0.03"/>
+            </geometry>
+        </collision>
+
+        <inertial>
+            <origin rpy="0 1.5707 1.5707" xyz="0 0 0"/>
+            <mass value="0.05"/>
+            <inertia ixx="1.531666666666667e-05" ixy="0" ixz="0" iyy="1.531666666666667e-05" iyz="0" izz="3.0625000000000006e-05"/>
+        </inertial>
+    </link>
+
+    <!-- Joint - right wheel -->
+    <joint name="joint_rear_right_wheel" type="continuous">
+        <origin rpy="0 0 0" xyz="-0.1 -0.12 -0.12"/>
+        <child link="right_rear_wheel"/>
+        <parent link="link_chassis"/>
+        <axis rpy="0 0 0" xyz="0 1 0"/>
+        <limit effort="10000" velocity="1000"/>
+        <joint_properties damping="1.0" friction="1.0"/>
+    </joint>
+
+    <!-- Link - right wheel -->
+    <link name="right_rear_wheel">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+            <!-- <cylinder length="0.001" radius="0.015"/> -->
+            <mesh filename="$(arg mesh_base_url)/wheel.stl" scale="0.00111 0.00111 0.0011"/>
+            </geometry>
+        </visual>
+
+        <collision>
+            <origin rpy="0 1.5707 1.5707" xyz="0 0 0"/>
+            <geometry>
+            <cylinder length="0.03" radius="0.03"/>
+            </geometry>
+        </collision>
+
+        <inertial>
+            <origin rpy="0 1.5707 1.5707" xyz="0 0 0"/>
+            <mass value="0.05"/>
+            <inertia ixx="1.531666666666667e-05" ixy="0" ixz="0" iyy="1.531666666666667e-05" iyz="0" izz="3.0625000000000006e-05"/>
+        </inertial>
+    </link>
+
+    <joint name="left_shoulder_joint" type="revolute">
+        <origin xyz="-0.016 0.048 0.157" rpy="0 3.14 0"/>
+        <parent link="upper_torso"/>
+        <child link="left_shoulder"/>
+        <axis xyz="0 1 0"/>
+        <limit lower="-1.15" upper="1.4" velocity="100" effort="100"/>
+    </joint>
+
+    <link name="left_shoulder">
+        <collision>
+            <origin xyz="0 0 0.01" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.02 0.03 0.03" />
+            </geometry>
+        </collision>
+        <visual>
+            <origin xyz="-0.135 -0.005 0.238" rpy="3.25 0 0"/>
+            <geometry>
+                <!-- <box size="0.02 0.03 0.03" /> -->
+                <mesh filename="$(arg mesh_base_url)/shoulder_base.stl" pose="0 0 0" scale="0.0011 0.00111 0.0011"/>
+            </geometry>
+        </visual>
+        <inertial>
+            <origin rpy="0 1.5707 1.5707" xyz="0 0 0"/>
+            <mass value="0.05"/>
+            <inertia ixx="1.531666666666667e-05" ixy="0" ixz="0" iyy="1.531666666666667e-05" iyz="0" izz="3.0625000000000006e-05"/>
+        </inertial>
+    </link>
+
+    <joint name="right_shoulder_joint" type="revolute">
+        <origin xyz="-0.015 -0.05 0.157" rpy="0 0 0"/>
+        <parent link="upper_torso"/>
+        <child link="right_shoulder"/>
+        <axis xyz="0 1 0"/>
+        <limit lower="-1.15" upper="1.4" velocity="100" effort="100"/>
+    </joint>
+
+    <link name="right_shoulder">
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.1 0.1 0.1" />
+            </geometry>
+        </collision>
+        <visual>
+            <origin xyz="0.112 0.02 0.244" rpy="0.16 3.05 0"/>
+            <geometry>
+                <mesh filename="$(arg mesh_base_url)/shoulder_base.stl" pose="0 0 0" scale="0.0011 0.00111 0.0011"/>
+                <!-- <box size="0.03 0.04 0.05" />-->
+            </geometry>
+        </visual>
+        <inertial>
+            <origin rpy="0 1.5707 1.5707" xyz="0 0 0"/>
+            <mass value="0.05"/>
+            <inertia ixx="1.531666666666667e-05" ixy="0" ixz="0" iyy="1.531666666666667e-05" iyz="0" izz="3.0625000000000006e-05"/>
+        </inertial>
+    </link>
+
+    <joint name="camera_joint" type="fixed">
+        <parent link="upper_torso"/>
+        <child link="camera_link"/>
+        <origin xyz="0.034 -0.006 0.095" rpy="0 0 0"/>
+    </joint>
+
+    <link name="camera_link">
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.02 0.085 0.038"/>
+            </geometry>
+        </collision>
+        <visual>
+            <origin rpy="0 3.14 -1.57" xyz="-0.22 -0.02 -0.04"/>
+            <geometry>
+                <mesh filename="$(arg mesh_base_url)/camera.stl" pose="0 0 0" scale="0.00111 0.00111 0.0011"/>
+                <!-- <box size="0.02 0.08 0.038"/>-->
+            </geometry>
+        </visual>
+        <inertial>
+            <origin rpy="0 0 1.5707" xyz="0 0 0"/>
+            <mass value="0.05"/>
+            <inertia ixx="1.531666666666667e-05" ixy="0" ixz="0" iyy="1.531666666666667e-05" iyz="0" izz="3.0625000000000006e-05"/>
+        </inertial>
+    </link>
+
+    <joint name="head_yaw_joint" type="revolute">
+        <parent link="upper_torso"/>
+        <child link="head_yaw_link"/>
+        <origin xyz="0 0 0.23" rpy="0 0 0"/>
+        <axis xyz="0 0 1"/>
+        <limit lower="-1.0" upper="1.0" velocity="2.0" effort="20"/>
+    </joint>
+
+    <link name="head_yaw_link">
+        <inertial>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <mass value="0.001"/>
+            <inertia ixx="0.000001" ixy="0" ixz="0"
+                     iyy="0.000001" iyz="0" izz="0.000001"/>
+        </inertial>
+    </link>
+
+    <joint name="head_pitch_joint" type="revolute">
+        <parent link="head_yaw_link"/>
+        <child link="head_link"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <axis xyz="0 1 0"/>
+        <limit lower="-0.8" upper="0.8" velocity="2.0" effort="20"/>
+    </joint>
+
+    <link name="head_link">
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.02 0.085 0.038"/>
+            </geometry>
+        </collision>
+        <visual>
+            <origin rpy="1.57 0 1.57" xyz="-0.08 -0.013 -0.31"/>
+            <geometry>
+                <mesh filename="$(arg mesh_base_url)/head.stl" pose="0 0 0" scale="0.00111 0.00111 0.0011"/>
+                <!-- <box size="0.02 0.08 0.038"/>-->
+            </geometry>
+        </visual>
+        <inertial>
+            <origin rpy="0 0 1.5707" xyz="0 0 0"/>
+            <mass value="0.05"/>
+            <inertia ixx="1.531666666666667e-05" ixy="0" ixz="0" iyy="1.531666666666667e-05" iyz="0" izz="3.0625000000000006e-05"/>
+        </inertial>
+    </link>
+
+    <joint name="screen_joint" type="fixed">
+        <parent link="head_link"/>
+        <child link="screen_link"/>
+        <origin xyz="0.03 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <link name="screen_link">
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 1.57"/>
+            <geometry>
+                <box size="0.02 0.085 0.038"/>
+            </geometry>
+        </collision>
+        <visual>
+            <origin rpy="0 0 1.57" xyz="0.2 0 0.22"/>
+            <geometry>
+                <mesh filename="$(arg mesh_base_url)/screen.stl" pose="0 0 0" scale="0.00111 0.00111 0.0011"/>
+                <!-- <box size="0.02 0.08 0.038"/>-->
+            </geometry>
+        </visual>
+        <inertial>
+            <origin rpy="0 0 1.5707" xyz="0 0 0"/>
+            <mass value="0.05"/>
+            <inertia ixx="1.531666666666667e-05" ixy="0" ixz="0" iyy="1.531666666666667e-05" iyz="0" izz="3.0625000000000006e-05"/>
+        </inertial>
+    </link>
+
+    <joint name="left_shoulder_low_joint" type="revolute">
+        <origin xyz="0 0.027 0.005" rpy="-0.1 -0.1 0"/>
+        <parent link="left_shoulder"/>
+        <child link="left_shoulder_low"/>
+        <axis xyz="1 0 0"/>
+        <limit lower="-2.2" upper="0" velocity="100" effort="100"/>
+    </joint>
+
+    <link name="left_shoulder_low">
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.1 0.1 0.1" />
+            </geometry>
+        </collision>
+        <visual>
+            <origin xyz="-0.004 -0.231 -0.126" rpy="-1.57 -1.57 0"/>
+            <geometry>
+                <mesh filename="$(arg mesh_base_url)/shoulder_low.stl" pose="0 0 0" scale="0.0011 0.00111 0.0011"/>
+                <!-- <box size="0.03 0.04 0.05" />-->
+            </geometry>
+        </visual>
+        <inertial>
+            <origin rpy="0 1.5707 1.5707" xyz="0 0 0"/>
+            <mass value="0.05"/>
+            <inertia ixx="1.531666666666667e-05" ixy="0" ixz="0" iyy="1.531666666666667e-05" iyz="0" izz="3.0625000000000006e-05"/>
+        </inertial>
+    </link>
+
+    <joint name="right_shoulder_low_joint" type="revolute">
+        <origin xyz="0 -0.027 0" rpy="-0.1 0 0"/>
+        <parent link="right_shoulder"/>
+        <child link="right_shoulder_low"/>
+        <axis xyz="1 0 0"/>
+        <limit lower="-2.2" upper="0" velocity="100" effort="100"/>
+    </joint>
+
+    <link name="right_shoulder_low">
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.1 0.1 0.1" />
+            </geometry>
+        </collision>
+        <visual>
+            <origin xyz="0.018 0.231 0.126" rpy="-1.57 1.57 3.14"/>
+            <geometry>
+                <mesh filename="$(arg mesh_base_url)/shoulder_low.stl" pose="0 0 0" scale="0.0011 0.00111 0.0011"/>
+                <!-- <box size="0.03 0.04 0.05" />-->
+            </geometry>
+        </visual>
+        <inertial>
+            <origin rpy="0 1.5707 1.5707" xyz="0 0 0"/>
+            <mass value="0.05"/>
+            <inertia ixx="1.531666666666667e-05" ixy="0" ixz="0" iyy="1.531666666666667e-05" iyz="0" izz="3.0625000000000006e-05"/>
+        </inertial>
+    </link>
+
+    <joint name="left_bicep_joint" type="revolute">
+        <origin xyz="0 0 0.043" rpy="0 0 0"/>
+        <parent link="left_shoulder_low"/>
+        <child link="left_bicep"/>
+        <axis xyz="0 0 1"/>
+        <limit lower="-1.7" upper="0.5" velocity="100" effort="100"/>
+    </joint>
+
+    <link name="left_bicep">
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.1 0.1 0.1" />
+            </geometry>
+        </collision>
+        <visual>
+            <origin xyz="0.222 0.01 -0.17" rpy="0 -1.57 0"/>
+            <geometry>
+                <mesh filename="$(arg mesh_base_url)/bicep.stl" pose="0 0 0" scale="0.0011 0.00111 0.0011"/>
+                <!-- <box size="0.03 0.04 0.05" />-->
+            </geometry>
+        </visual>
+        <inertial>
+            <origin rpy="0 1.5707 1.5707" xyz="0 0 0"/>
+            <mass value="0.05"/>
+            <inertia ixx="1.531666666666667e-05" ixy="0" ixz="0" iyy="1.531666666666667e-05" iyz="0" izz="3.0625000000000006e-05"/>
+        </inertial>
+    </link>
+
+    <joint name="right_bicep_joint" type="revolute">
+        <origin xyz="0 0 -0.043" rpy="0 0 0"/>
+        <parent link="right_shoulder_low"/>
+        <child link="right_bicep"/>
+        <axis xyz="0 0 1"/>
+        <limit lower="-1.7" upper="0.5" velocity="100" effort="100"/>
+    </joint>
+
+    <link name="right_bicep">
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.1 0.1 0.1" />
+            </geometry>
+        </collision>
+        <visual>
+            <origin xyz="-0.224 0.007 0.17" rpy="0 1.57 0"/>
+            <geometry>
+                <mesh filename="$(arg mesh_base_url)/bicep.stl" pose="0 0 0" scale="0.0011 0.00111 0.0011"/>
+                <!-- <box size="0.03 0.04 0.05" />-->
+            </geometry>
+        </visual>
+        <inertial>
+            <origin rpy="0 1.5707 1.5707" xyz="0 0 0"/>
+            <mass value="0.05"/>
+            <inertia ixx="1.531666666666667e-05" ixy="0" ixz="0" iyy="1.531666666666667e-05" iyz="0" izz="3.0625000000000006e-05"/>
+        </inertial>
+    </link>
+
+    <joint name="right_arm_joint" type="revolute">
+        <origin xyz="0.01 -0.005 -0.11" rpy="0 -0.35 0"/>
+        <parent link="right_bicep"/>
+        <child link="right_arm"/>
+        <axis xyz="0 1 0"/>
+        <limit lower="-2.2" upper="0" velocity="100" effort="100"/>
+    </joint>
+
+    <link name="right_arm">
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.1 0.1 0.1" />
+            </geometry>
+        </collision>
+        <visual>
+            <origin xyz="-0.234 0.026 0.28" rpy="0 -1.57 3.14"/>
+            <geometry>
+                <mesh filename="$(arg mesh_base_url)/right_arm.stl" pose="0 0 0" scale="0.0011 0.00111 0.0011"/>
+                <!-- <box size="0.03 0.04 0.05" />-->
+            </geometry>
+        </visual>
+        <inertial>
+            <origin rpy="0 1.5707 1.5707" xyz="0 0 0"/>
+            <mass value="0.05"/>
+            <inertia ixx="1.531666666666667e-05" ixy="0" ixz="0" iyy="1.531666666666667e-05" iyz="0" izz="3.0625000000000006e-05"/>
+        </inertial>
+    </link>
+
+    <joint name="left_arm_joint" type="revolute">
+        <origin xyz="-0.012 0.003 0.11" rpy="0 -0.35 0"/>
+        <parent link="left_bicep"/>
+        <child link="left_arm"/>
+        <axis xyz="0 1 0"/>
+        <limit lower="-2.2" upper="0" velocity="100" effort="100"/>
+    </joint>
+
+    <link name="left_arm">
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.1 0.1 0.1" />
+            </geometry>
+        </collision>
+        <visual>
+            <origin xyz="0.233 0.006 -0.28" rpy="0 -1.57 0"/>
+            <geometry>
+                <mesh filename="$(arg mesh_base_url)/left_arm.stl" pose="0 0 0" scale="0.0011 0.00111 0.0011"/>
+                <!-- <box size="0.03 0.04 0.05" />-->
+            </geometry>
+        </visual>
+        <inertial>
+            <origin rpy="0 1.5707 1.5707" xyz="0 0 0"/>
+            <mass value="0.05"/>
+            <inertia ixx="1.531666666666667e-05" ixy="0" ixz="0" iyy="1.531666666666667e-05" iyz="0" izz="3.0625000000000006e-05"/>
+        </inertial>
+    </link>
+</robot>

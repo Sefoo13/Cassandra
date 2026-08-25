@@ -1,0 +1,55 @@
+cassandra_servo_controller:
+  ros__parameters:
+    serial_port: /dev/ttyUSB0
+    baudrate: 115200
+    serial_timeout: 1.0
+
+    servo_ids: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    joint_names:
+      - left_shoulder_joint
+      - left_shoulder_low_joint
+      - left_bicep_joint
+      - left_arm_joint
+      - upper_torso_joint
+      - right_shoulder_joint
+      - right_shoulder_low_joint
+      - right_bicep_joint
+      - right_arm_joint
+      - head_yaw_joint
+      - head_pitch_joint
+
+    # Raw positions treated as zero radians for each ROS joint.
+    home_positions: [450, 730, 500, 450, 400, 660, 100, 470, 200, 460, 550]
+    # Right-arm servos are physically mirrored relative to the left arm.
+    directions: [1.0, 1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0, 1.0, 1.0]
+    raw_min: 0
+    raw_max: 1000
+    # LX-16A nominal range: 240 degrees over 1000 raw units.
+    radians_per_unit: 0.0041887902047863905
+
+    move_time_ms: 500
+    pose_move_time_ms: 1000
+    control_rate_hz: 50.0
+    state_publish_rate_hz: 20.0
+    read_positions: true
+    move_to_home_on_activate: false
+    torque_off_on_deactivate: false
+    dry_run: false
+
+    forward_command_topic: /forward_position_controller/commands
+    # Must match forward_position_controller.joints in controllers.yaml.
+    forward_joint_names:
+      - right_shoulder_joint
+      - left_shoulder_joint
+      - right_shoulder_low_joint
+      - left_shoulder_low_joint
+      - right_bicep_joint
+      - left_bicep_joint
+      - left_arm_joint
+      - right_arm_joint
+      - upper_torso_joint
+      - head_yaw_joint
+      - head_pitch_joint
+    raw_command_topic: /ros_cassandra/servos/raw_commands
+    pose_topic: /ros_cassandra/servos/pose
+    joint_state_topic: /joint_states

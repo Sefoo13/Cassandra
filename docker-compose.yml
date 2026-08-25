@@ -1,0 +1,63 @@
+services:
+  piper:
+    container_name: piper
+    build:
+      context: .
+      dockerfile: piper.Dockerfile
+    network_mode: host
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    volumes:
+      - ${HOME}/piper-voices:/voices
+      - ${PULSE_RUNTIME_DIR:-/run/user/1000/pulse}:/run/pulse
+    environment:
+      PIPER_API_HOST: 127.0.0.1
+      PIPER_MODEL: /voices/uk_UA-lada-x_low.onnx
+      PULSE_SERVER: unix:/run/pulse/native
+      PULSE_SINK: ${PULSE_SINK:-0}
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://127.0.0.1:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  ros_cassandra:
+    container_name: ros_cassandra
+    build:
+      context: .
+      dockerfile: base.Dockerfile
+    privileged: true
+    runtime: nvidia
+    network_mode: host
+    stdin_open: true
+    tty: true
+    devices:
+      - /dev/snd:/dev/snd
+      - /dev/ttyACM0:/dev/ttyACM0
+      - /dev/ttyUSB0:/dev/ttyUSB0
+    environment:
+      QT_X11_NO_MITSHM: "0"
+      XAUTHORITY: /tmp/.docker.xauth
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CASSANDRA_MESH_BASE_URL: ${CASSANDRA_MESH_BASE_URL:-}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - /usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu/tegra
+      - /tmp/.docker.xauth:/tmp/.docker.xauth
+      - ./ros2_ws/ros_cassandra_control:/ros2_ws/src/ros_cassandra_control
+      - ./ros2_ws/ros_cassandra_description:/ros2_ws/src/ros_cassandra_description
+      - ./ros2_ws/diffdrive_arduino:/ros2_ws/src/diffdrive_cassandra
+      - ./ros2_ws/vision_recognition_pkg:/ros2_ws/src/vision_recognition_pkg
+      - ${VOSK_MODEL_DIR:-${HOME}/vosk-model}:/models/vosk:ro
+
+    command: bash
+
+  dusty:
+    container_name: dusty
+    build:
+      context: .
+      dockerfile: dusty.Dockerfile
+    privileged: true
+    network_mode: host
+
+    stdin_open: true
+    tty: true

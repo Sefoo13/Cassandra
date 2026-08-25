@@ -1,0 +1,23 @@
+/**:
+  ros__parameters:
+    model_path: /models/vosk
+    topic: /voice/transcript
+    command_topic: /voice/command
+    sample_rate: 16000
+    audio_device: "USB PnP Audio Device"
+    mixer_enabled: true
+    mixer_card: 2
+    mixer_control: "PCM"
+    mixer_element: 1
+    mixer_volume_percent: 70
+    input_gain: 2.0
+    block_size: 8000
+    speak_recognized_text: true
+    speak_service: /speak
+    speaking_topic: /voice/speaking
+    listen_cooldown_seconds: 0.5
+    wake_word_enabled: true
+    wake_words: ["команда"]
+    wake_acknowledgement: "Слухаю"
+    command_window_seconds: 15.0
+    always_active_commands: ["стоп", "стій", "зупинись", "зупинися"]

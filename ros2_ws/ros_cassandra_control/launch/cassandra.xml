@@ -1,0 +1,7 @@
+<?xml version='1.0' ?>
+<launch>
+    <include file="$(find-pkg-share ros_cassandra_control)/launch/controllers.launch.py"/>
+<!--    <include file="$(find-pkg-share ros_cassandra_control)/launch/camera.launch.py"/>-->
+    <include file="$(find-pkg-share ros_cassandra_control)/launch/camera_depth.launch.py"/>
+    <include file="$(find-pkg-share ros_cassandra_control)/launch/foxglove.launch.py"/>
+</launch>

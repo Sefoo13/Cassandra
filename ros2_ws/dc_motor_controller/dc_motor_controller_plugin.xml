@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<library path="dc_motor_controller">
+  <class
+    name="dc_motor_controller/DCMotorSystemHardware"
+    type="dc_motor_controller::DCMotorSystemHardware"
+    base_class_type="hardware_interface::SystemInterface">
+    <description>
+      ros2_control system interface for Cassandra's four PCA9685-driven DC motors.
+    </description>
+  </class>
+</library>

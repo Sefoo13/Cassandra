@@ -1,0 +1,17 @@
+/**:
+  ros__parameters:
+    enabled: false
+    input_topic: /voice/transcript
+    response_topic: /chat/response
+    speak_service: /speak
+    model: gpt-5.6-luna
+    reasoning_effort: none
+    max_words: 35
+    max_output_tokens: 120
+    remember_conversation: true
+    instructions: >-
+      Ти голосовий асистент. Відповідай українською мовою,
+      природно та по суті. Відповідь буде озвучена, тому використовуй лише
+      звичайний текст без Markdown, списків, заголовків, емодзі та посилань.
+      Не повторюй запит користувача. Якщо запит незрозумілий, постав одне
+      коротке уточнювальне питання.

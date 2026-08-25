@@ -1,0 +1,19 @@
+<launch>
+    <!-- Namespace   -->
+    <arg name="namespace" default="ros_cassandra"/>
+   
+    <!-- launch nodes in namespace -->
+    <group ns="$(arg namespace)">
+
+        <!-- Run teleop twist keyboard -->
+        <node name="teleop_twist_keyboard" pkg="teleop_twist_keyboard" type="teleop_twist_keyboard.py"/>
+
+        <!-- Run the map server -->
+        <arg name="map_file" default="$(find ros_cassandra)/maps/flat.yaml"/>
+        <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)" />
+
+        <!-- Show in Rviz -->
+        <node name="rviz" pkg="rviz" type="rviz" required="true" args="-d $(find ros_cassandra)/rviz/lidar.rviz"/>
+
+    </group>
+</launch>

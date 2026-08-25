@@ -1,0 +1,7 @@
+<?xml version='1.0' ?>
+<launch>
+    <include file="$(find-pkg-share ros_cassandra)/launch/empty_world.launch.py"/>
+    <include file="$(find-pkg-share ros_cassandra)/launch/rviz.launch.py"/>
+    <!-- Read robot_description and spawn in gazebo running sim -->
+    <include file="$(find-pkg-share ros_cassandra)/launch/spawn_robot.launch.py"/>
+</launch>

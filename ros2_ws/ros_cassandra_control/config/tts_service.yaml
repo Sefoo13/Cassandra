@@ -1,0 +1,5 @@
+/**:
+  ros__parameters:
+    piper_api_url: http://127.0.0.1:8000/speak
+    request_timeout_seconds: 130.0
+    speaking_topic: /voice/speaking
