@@ -4,14 +4,16 @@
     topic: /voice/transcript
     command_topic: /voice/command
     sample_rate: 16000
-    audio_device: "USB PnP Audio Device"
-    mixer_enabled: true
+    audio_device: "reSpeaker Flex XVF3800 C16K6Ch"
+    input_channels: 6
+    selected_channel: 1
+    mixer_enabled: false
     mixer_card: 2
     mixer_control: "PCM"
     mixer_element: 1
     mixer_volume_percent: 70
-    input_gain: 2.0
-    block_size: 8000
+    input_gain: 1.0
+    block_size: 4000
     speak_recognized_text: true
     speak_service: /speak
     speaking_topic: /voice/speaking

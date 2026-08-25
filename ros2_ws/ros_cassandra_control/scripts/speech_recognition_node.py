@@ -48,6 +48,17 @@ class SpeechRecognitionNode(Node):
         command_topic = str(self.get_parameter("command_topic").value)
         configured_device = str(self.get_parameter("audio_device").value).strip()
         self._audio_device = configured_device or None
+        self._input_channels = max(
+            1,
+            int(self.get_parameter("input_channels").value),
+        )
+        self._selected_channel = int(
+            self.get_parameter("selected_channel").value
+        )
+        if not 0 <= self._selected_channel < self._input_channels:
+            raise RuntimeError(
+                "selected_channel must be between 0 and input_channels - 1"
+            )
         self._configure_mixer()
         self._input_gain = max(
             0.1,
@@ -107,7 +118,7 @@ class SpeechRecognitionNode(Node):
                 blocksize=self._block_size,
                 device=self._audio_device,
                 dtype="int16",
-                channels=1,
+                channels=self._input_channels,
                 callback=self._on_audio,
             )
             self._stream.start()
@@ -117,7 +128,9 @@ class SpeechRecognitionNode(Node):
         self._worker.start()
         device_name = self._audio_device or "system default"
         self.get_logger().info(
-            f"Listening on {device_name}; completed phrases publish to {topic}"
+            f"Listening on {device_name}, input channel "
+            f"{self._selected_channel + 1}/{self._input_channels}; "
+            f"completed phrases publish to {topic}"
         )
 
     def _configure_mixer(self):
@@ -175,11 +188,17 @@ class SpeechRecognitionNode(Node):
         ):
             return
         try:
-            audio = bytes(input_data)
+            samples = np.frombuffer(input_data, dtype=np.int16)
+            if self._input_channels > 1:
+                complete_frames = samples.size // self._input_channels
+                samples = samples[: complete_frames * self._input_channels]
+                samples = samples.reshape(-1, self._input_channels)[
+                    :, self._selected_channel
+                ]
             if self._input_gain != 1.0:
-                samples = np.frombuffer(audio, dtype=np.int16).astype(np.float32)
-                samples *= self._input_gain
-                audio = np.clip(samples, -32768, 32767).astype(np.int16).tobytes()
+                samples = samples.astype(np.float32) * self._input_gain
+                samples = np.clip(samples, -32768, 32767).astype(np.int16)
+            audio = np.ascontiguousarray(samples).tobytes()
             self._audio_queue.put_nowait(audio)
         except queue.Full:
             self.get_logger().warning("Audio queue is full; dropping an audio block")

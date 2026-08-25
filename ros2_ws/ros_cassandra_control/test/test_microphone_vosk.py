@@ -32,8 +32,10 @@ def resolve_model_path(configured_path):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="/models/vosk")
-    parser.add_argument("--device", default="USB PnP Audio Device")
+    parser.add_argument("--device", default="reSpeaker Flex XVF3800 C16K6Ch")
     parser.add_argument("--sample-rate", type=int, default=16000)
+    parser.add_argument("--channels", type=int, default=6)
+    parser.add_argument("--channel", type=int, default=1)
     parser.add_argument("--duration", type=float, default=20.0)
     parser.add_argument("--list-devices", action="store_true")
     return parser.parse_args()
@@ -44,6 +46,9 @@ def main():
     if args.list_devices:
         print(sd.query_devices())
         return
+
+    if not 0 <= args.channel < args.channels:
+        raise RuntimeError("--channel must be between 0 and --channels - 1")
 
     model_path = resolve_model_path(args.model)
     device_info = sd.query_devices(args.device, "input")
@@ -70,7 +75,7 @@ def main():
         blocksize=4000,
         device=args.device,
         dtype="int16",
-        channels=1,
+        channels=args.channels,
         callback=audio_callback,
     ):
         while time.monotonic() < deadline:
@@ -81,6 +86,10 @@ def main():
                 continue
 
             samples = np.frombuffer(audio, dtype=np.int16)
+            complete_frames = samples.size // args.channels
+            samples = samples[: complete_frames * args.channels]
+            samples = samples.reshape(-1, args.channels)[:, args.channel]
+            audio = np.ascontiguousarray(samples).tobytes()
             now = time.monotonic()
             if now - last_level_report >= 1.0:
                 peak = int(np.max(np.abs(samples))) if samples.size else 0
