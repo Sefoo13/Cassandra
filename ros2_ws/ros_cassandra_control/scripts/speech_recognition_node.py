@@ -107,7 +107,7 @@ class SpeechRecognitionNode(Node):
         self._stop_event = threading.Event()
         self._speaking = threading.Event()
         self._external_speaking = threading.Event()
-        self._speech_finished_callback = None
+        self._pending_command_window = False
         self._resume_listening_at = 0.0
         self._command_mode_until = 0.0
         self._stream = None
@@ -258,10 +258,9 @@ class SpeechRecognitionNode(Node):
                 self._command_mode_until = 0.0
             elif self._wake_acknowledgement:
                 self._command_mode_until = float("inf")
-                if not self._speak(
-                    self._wake_acknowledgement,
-                    on_finished=self._activate_command_window,
-                ):
+                self._pending_command_window = True
+                if not self._speak(self._wake_acknowledgement):
+                    self._pending_command_window = False
                     self._activate_command_window()
             else:
                 self._activate_command_window()
@@ -297,13 +296,11 @@ class SpeechRecognitionNode(Node):
             return
         self._resume_listening_at = time.monotonic() + self._listen_cooldown
         self._external_speaking.clear()
-        self._speaking.clear()
-        on_finished = self._speech_finished_callback
-        self._speech_finished_callback = None
-        if on_finished is not None:
-            on_finished()
+        if self._pending_command_window:
+            self._pending_command_window = False
+            self._activate_command_window()
 
-    def _speak(self, text, on_finished=None):
+    def _speak(self, text):
         if self._speaking.is_set():
             self.get_logger().warning("Speech is already in progress; skipping text")
             return False
@@ -320,7 +317,6 @@ class SpeechRecognitionNode(Node):
 
         request = Speak.Request()
         request.text = text
-        self._speech_finished_callback = on_finished
         future = self._speak_client.call_async(request)
         future.add_done_callback(self._on_speech_finished)
         return True
@@ -329,21 +325,21 @@ class SpeechRecognitionNode(Node):
         try:
             response = future.result()
             if response.success:
-                self.get_logger().info("Speech request accepted")
-                return
+                self.get_logger().info("Speech request queued")
             else:
                 self.get_logger().error(
                     f"Text-to-speech failed: {response.message}"
                 )
+                if self._pending_command_window:
+                    self._pending_command_window = False
+                    self._activate_command_window()
         except Exception as error:
             self.get_logger().error(f"Cannot call /speak: {error}")
-
-        self._resume_listening_at = time.monotonic() + self._listen_cooldown
-        self._speaking.clear()
-        on_finished = self._speech_finished_callback
-        self._speech_finished_callback = None
-        if on_finished is not None:
-            on_finished()
+            if self._pending_command_window:
+                self._pending_command_window = False
+                self._activate_command_window()
+        finally:
+            self._speaking.clear()
 
     def destroy_node(self):
         self._stop_event.set()

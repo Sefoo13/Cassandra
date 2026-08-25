@@ -59,6 +59,8 @@ class TextToSpeechService(Node):
 
             try:
                 self._process_speech(text)
+            except Exception as error:
+                self.get_logger().error(f"Unexpected speech worker error: {error}")
             finally:
                 self._speech_queue.task_done()
 
@@ -101,6 +103,7 @@ class TextToSpeechService(Node):
             self.get_logger().info("Speech request completed")
         else:
             self.get_logger().error(message)
+        return success, message
 
     def destroy_node(self):
         self._stop_event.set()
