@@ -14,7 +14,7 @@ from .model import LX16A_RADIANS_PER_UNIT, POSES, clamp_raw
 from .model import radians_to_raw, raw_to_radians
 
 
-DEFAULT_SERVO_IDS = tuple(range(1, 12))
+DEFAULT_SERVO_IDS = tuple(range(1, 14))
 DEFAULT_JOINT_NAMES = (
     "left_shoulder_joint",
     "left_shoulder_low_joint",
@@ -27,8 +27,12 @@ DEFAULT_JOINT_NAMES = (
     "right_arm_joint",
     "head_yaw_joint",
     "head_pitch_joint",
+    "left_claw_joint",
+    "right_claw_joint",
 )
-DEFAULT_HOME_POSITIONS = (450, 730, 500, 450, 400, 660, 100, 470, 200, 460, 550)
+DEFAULT_HOME_POSITIONS = (
+    450, 730, 500, 450, 400, 660, 100, 470, 200, 460, 550, 500, 500
+)
 DEFAULT_DIRECTIONS = (
     1.0,   # left_shoulder_joint
     1.0,   # left_shoulder_low_joint
@@ -41,6 +45,8 @@ DEFAULT_DIRECTIONS = (
     -1.0,  # right_arm_joint
     1.0,   # head_yaw_joint
     1.0,   # head_pitch_joint
+    1.0,   # left_claw_joint
+    -1.0,  # right_claw_joint
 )
 DEFAULT_FORWARD_JOINT_NAMES = (
     "right_shoulder_joint",
@@ -54,6 +60,8 @@ DEFAULT_FORWARD_JOINT_NAMES = (
     "upper_torso_joint",
     "head_yaw_joint",
     "head_pitch_joint",
+    "left_claw_joint",
+    "right_claw_joint",
 )
 
 
@@ -141,7 +149,7 @@ class LX16AServoBus:
 
 
 class CassandraServoController(LifecycleNode):
-    """Lifecycle node controlling Cassandra's eleven LX-16A servos."""
+    """Lifecycle node controlling Cassandra's thirteen LX-16A servos."""
 
     def __init__(self) -> None:
         super().__init__("cassandra_servo_controller")

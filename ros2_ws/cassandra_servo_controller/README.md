@@ -1,6 +1,6 @@
 # cassandra_servo_controller
 
-Lifecycle-aware ROS 2 Python driver for Cassandra's eleven LewanSoul LX-16A
+Lifecycle-aware ROS 2 Python driver for Cassandra's thirteen LewanSoul LX-16A
 servos. Servo IDs, home positions, and named poses were derived from
 `test_scripts/servo_movement.py`.
 
@@ -46,7 +46,7 @@ The launch file automatically performs `configure` followed by `activate`.
 ## forward_position_controller bridge
 
 The driver subscribes to `/forward_position_controller/commands` and maps the
-controller's ordered `Float64MultiArray` directly to all eleven physical
+controller's ordered `Float64MultiArray` directly to all thirteen physical
 servos, including head yaw and head pitch. The `forward_joint_names` parameter
 must stay in the same order as `forward_position_controller.joints` in
 `ros_cassandra_control/config/controllers.yaml`.

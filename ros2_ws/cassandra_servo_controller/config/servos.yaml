@@ -4,7 +4,7 @@ cassandra_servo_controller:
     baudrate: 115200
     serial_timeout: 1.0
 
-    servo_ids: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    servo_ids: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
     joint_names:
       - left_shoulder_joint
       - left_shoulder_low_joint
@@ -17,11 +17,13 @@ cassandra_servo_controller:
       - right_arm_joint
       - head_yaw_joint
       - head_pitch_joint
+      - left_claw_joint
+      - right_claw_joint
 
     # Raw positions treated as zero radians for each ROS joint.
-    home_positions: [450, 730, 500, 450, 400, 660, 100, 470, 200, 460, 550]
+    home_positions: [450, 730, 500, 450, 400, 660, 100, 470, 200, 460, 550, 500, 500]
     # Right-arm servos are physically mirrored relative to the left arm.
-    directions: [1.0, 1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0, 1.0, 1.0]
+    directions: [1.0, 1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0]
     raw_min: 0
     raw_max: 1000
     # LX-16A nominal range: 240 degrees over 1000 raw units.
@@ -50,6 +52,8 @@ cassandra_servo_controller:
       - upper_torso_joint
       - head_yaw_joint
       - head_pitch_joint
+      - left_claw_joint
+      - right_claw_joint
     raw_command_topic: /ros_cassandra/servos/raw_commands
     pose_topic: /ros_cassandra/servos/pose
     joint_state_topic: /joint_states

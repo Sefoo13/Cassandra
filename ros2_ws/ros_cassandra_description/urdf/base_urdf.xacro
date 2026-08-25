@@ -583,4 +583,48 @@
             <inertia ixx="1.531666666666667e-05" ixy="0" ixz="0" iyy="1.531666666666667e-05" iyz="0" izz="3.0625000000000006e-05"/>
         </inertial>
     </link>
+
+    <joint name="left_claw_joint" type="revolute">
+        <origin xyz="0 0 0.12" rpy="0 0 0"/>
+        <parent link="left_arm"/>
+        <child link="left_claw"/>
+        <axis xyz="0 0 1"/>
+        <limit lower="-2.0" upper="2.0" velocity="2.0" effort="10"/>
+    </joint>
+
+    <link name="left_claw">
+        <visual>
+            <geometry><box size="0.06 0.04 0.02"/></geometry>
+            <material name="grey"/>
+        </visual>
+        <collision>
+            <geometry><box size="0.06 0.04 0.02"/></geometry>
+        </collision>
+        <inertial>
+            <mass value="0.03"/>
+            <inertia ixx="0.000005" ixy="0" ixz="0" iyy="0.00001" iyz="0" izz="0.0000125"/>
+        </inertial>
+    </link>
+
+    <joint name="right_claw_joint" type="revolute">
+        <origin xyz="0 0 -0.12" rpy="0 0 0"/>
+        <parent link="right_arm"/>
+        <child link="right_claw"/>
+        <axis xyz="0 0 1"/>
+        <limit lower="-2.0" upper="2.0" velocity="2.0" effort="10"/>
+    </joint>
+
+    <link name="right_claw">
+        <visual>
+            <geometry><box size="0.06 0.04 0.02"/></geometry>
+            <material name="grey"/>
+        </visual>
+        <collision>
+            <geometry><box size="0.06 0.04 0.02"/></geometry>
+        </collision>
+        <inertial>
+            <mass value="0.03"/>
+            <inertia ixx="0.000005" ixy="0" ixz="0" iyy="0.00001" iyz="0" izz="0.0000125"/>
+        </inertial>
+    </link>
 </robot>

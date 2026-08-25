@@ -95,4 +95,6 @@ forward_position_controller:
       - upper_torso_joint
       - head_yaw_joint
       - head_pitch_joint
+      - left_claw_joint
+      - right_claw_joint
     interface_name: position
