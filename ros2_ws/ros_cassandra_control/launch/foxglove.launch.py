@@ -17,7 +17,12 @@ def generate_launch_description():
                 'launch',
                 'rosbridge_websocket_launch.xml',
             )
-        )
+        ),
+        launch_arguments={
+            'call_services_in_new_thread': 'true',
+            'default_call_service_timeout': '10.0',
+            'send_action_goals_in_new_thread': 'true',
+        }.items(),
     )
 
     tts_node = Node(

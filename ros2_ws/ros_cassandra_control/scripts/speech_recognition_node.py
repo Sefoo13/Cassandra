@@ -107,6 +107,7 @@ class SpeechRecognitionNode(Node):
         self._stop_event = threading.Event()
         self._speaking = threading.Event()
         self._external_speaking = threading.Event()
+        self._speech_finished_callback = None
         self._resume_listening_at = 0.0
         self._command_mode_until = 0.0
         self._stream = None
@@ -296,6 +297,11 @@ class SpeechRecognitionNode(Node):
             return
         self._resume_listening_at = time.monotonic() + self._listen_cooldown
         self._external_speaking.clear()
+        self._speaking.clear()
+        on_finished = self._speech_finished_callback
+        self._speech_finished_callback = None
+        if on_finished is not None:
+            on_finished()
 
     def _speak(self, text, on_finished=None):
         if self._speaking.is_set():
@@ -314,28 +320,30 @@ class SpeechRecognitionNode(Node):
 
         request = Speak.Request()
         request.text = text
+        self._speech_finished_callback = on_finished
         future = self._speak_client.call_async(request)
-        future.add_done_callback(
-            lambda completed: self._on_speech_finished(completed, on_finished)
-        )
+        future.add_done_callback(self._on_speech_finished)
         return True
 
-    def _on_speech_finished(self, future, on_finished=None):
+    def _on_speech_finished(self, future):
         try:
             response = future.result()
             if response.success:
-                self.get_logger().info("Recognized text was spoken")
+                self.get_logger().info("Speech request accepted")
+                return
             else:
                 self.get_logger().error(
                     f"Text-to-speech failed: {response.message}"
                 )
         except Exception as error:
             self.get_logger().error(f"Cannot call /speak: {error}")
-        finally:
-            self._resume_listening_at = time.monotonic() + self._listen_cooldown
-            self._speaking.clear()
-            if on_finished is not None:
-                on_finished()
+
+        self._resume_listening_at = time.monotonic() + self._listen_cooldown
+        self._speaking.clear()
+        on_finished = self._speech_finished_callback
+        self._speech_finished_callback = None
+        if on_finished is not None:
+            on_finished()
 
     def destroy_node(self):
         self._stop_event.set()
