@@ -17,7 +17,7 @@
     playback_recognized_audio: true
     playback_output_device: ""
     playback_max_seconds: 15.0
-    playback_gain: 2.0
+    playback_gain: 4.0
     speak_recognized_text: true
     speak_service: /speak
     speaking_topic: /voice/speaking
