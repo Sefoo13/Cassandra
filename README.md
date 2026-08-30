@@ -25,6 +25,13 @@ The node starts from `foxglove.launch.py`. Its parameters are stored in
 `config/speech_recognition.yaml`. By default it opens the system microphone at
 16 kHz and reads the model from `/models/vosk`.
 
+For microphone diagnostics, `playback_recognized_audio` replays the captured
+PCM audio after Vosk detects the end of a non-empty phrase. Microphone capture
+is ignored during playback and for the configured listening cooldown to avoid
+an audio feedback loop. `playback_output_device` selects a SoundDevice output;
+an empty value uses the system default. Disable this option after microphone
+testing to avoid adding playback latency to normal voice interaction.
+
 ## Short ChatGPT responses
 
 `chat_response_node.py` subscribes to `/voice/transcript`, sends each phrase to

@@ -67,6 +67,17 @@ class SpeechRecognitionNode(Node):
         self._speak_recognized_text = bool(
             self.get_parameter("speak_recognized_text").value
         )
+        self._playback_recognized_audio = bool(
+            self.get_parameter("playback_recognized_audio").value
+        )
+        configured_output_device = str(
+            self.get_parameter("playback_output_device").value
+        ).strip()
+        self._playback_output_device = configured_output_device or None
+        self._playback_max_seconds = max(
+            1.0,
+            float(self.get_parameter("playback_max_seconds").value),
+        )
         speak_service = str(self.get_parameter("speak_service").value)
         speaking_topic = str(self.get_parameter("speaking_topic").value)
         self._listen_cooldown = float(
@@ -106,6 +117,7 @@ class SpeechRecognitionNode(Node):
         self._audio_queue = queue.Queue(maxsize=20)
         self._stop_event = threading.Event()
         self._speaking = threading.Event()
+        self._playing_back = threading.Event()
         self._external_speaking = threading.Event()
         self._pending_command_window = False
         self._resume_listening_at = 0.0
@@ -184,6 +196,7 @@ class SpeechRecognitionNode(Node):
             self.get_logger().warning(f"Microphone status: {status}")
         if (
             self._speaking.is_set()
+            or self._playing_back.is_set()
             or self._external_speaking.is_set()
             or time.monotonic() < self._resume_listening_at
         ):
@@ -205,11 +218,19 @@ class SpeechRecognitionNode(Node):
             self.get_logger().warning("Audio queue is full; dropping an audio block")
 
     def _recognize(self):
+        phrase_audio = bytearray()
+        max_audio_bytes = int(
+            self._sample_rate * 2 * self._playback_max_seconds
+        )
         while not self._stop_event.is_set():
             try:
                 audio = self._audio_queue.get(timeout=0.2)
             except queue.Empty:
                 continue
+
+            phrase_audio.extend(audio)
+            if len(phrase_audio) > max_audio_bytes:
+                del phrase_audio[: len(phrase_audio) - max_audio_bytes]
 
             if not self._recognizer.AcceptWaveform(audio):
                 continue
@@ -222,7 +243,13 @@ class SpeechRecognitionNode(Node):
 
             transcript = transcript.strip()
             if not transcript:
+                phrase_audio.clear()
                 continue
+
+            captured_audio = bytes(phrase_audio)
+            phrase_audio.clear()
+            if self._playback_recognized_audio:
+                self._play_audio(captured_audio)
 
             if self._route_wake_command(transcript):
                 continue
@@ -231,6 +258,42 @@ class SpeechRecognitionNode(Node):
             self.get_logger().info(f"Recognized: {transcript!r}")
             if self._speak_recognized_text:
                 self._speak(transcript)
+
+    def _play_audio(self, audio):
+        """Play captured mono PCM while temporarily ignoring microphone input."""
+        if not audio:
+            return
+
+        self._playing_back.set()
+        self._clear_audio_queue()
+        try:
+            with sd.RawOutputStream(
+                samplerate=self._sample_rate,
+                device=self._playback_output_device,
+                dtype="int16",
+                channels=1,
+            ) as stream:
+                stream.write(audio)
+            output_name = self._playback_output_device or "system default"
+            self.get_logger().info(
+                f"Played captured phrase on {output_name}"
+            )
+        except Exception as error:
+            self.get_logger().warning(
+                f"Cannot play captured microphone audio: {error}"
+            )
+        finally:
+            self._resume_listening_at = (
+                time.monotonic() + self._listen_cooldown
+            )
+            self._playing_back.clear()
+
+    def _clear_audio_queue(self):
+        while not self._audio_queue.empty():
+            try:
+                self._audio_queue.get_nowait()
+            except queue.Empty:
+                break
 
     def _route_wake_command(self, transcript):
         if not self._wake_word_enabled:
@@ -309,11 +372,7 @@ class SpeechRecognitionNode(Node):
             return False
 
         self._speaking.set()
-        while not self._audio_queue.empty():
-            try:
-                self._audio_queue.get_nowait()
-            except queue.Empty:
-                break
+        self._clear_audio_queue()
 
         request = Speak.Request()
         request.text = text
