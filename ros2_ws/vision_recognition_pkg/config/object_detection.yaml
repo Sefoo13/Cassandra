@@ -1,13 +1,14 @@
 /object_detector:
   ros__parameters:
-    input_topic: /camera/realsense2_camera/color/image_raw
-    depth_topic: /camera/realsense2_camera/aligned_depth_to_color/image_raw
+    input_topic: /camera/realsense2_camera/color/image_raw/compressed
+    depth_topic: ""
     annotated_topic: /vision/objects
     detections_topic: /vision/detections
     model_path: /ros2_ws/src/ros_cassandra_control/config/yolov5n.engine
     confidence_threshold: 0.35
     iou_threshold: 0.45
     max_fps: 30.0
+    jpeg_quality: 85
     tracking_iou_threshold: 0.3
     tracking_max_age_seconds: 1.0
     follow_person_enabled: false

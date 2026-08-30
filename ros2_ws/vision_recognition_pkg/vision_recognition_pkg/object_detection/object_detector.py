@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Detect objects in raw camera frames with TensorRT YOLOv5."""
+"""Detect objects in compressed camera frames with TensorRT YOLOv5."""
 
 import json
 import glob
@@ -13,7 +13,7 @@ import rclpy
 from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import Bool, Int32MultiArray, String
 
 try:
@@ -233,7 +233,7 @@ class ObjectDetector(Node):
         super().__init__("object_detector")
         self.declare_parameter(
             "input_topic",
-            "/camera/realsense2_camera/color/image_raw",
+            "/camera/realsense2_camera/color/image_raw/compressed",
         )
         self.declare_parameter(
             "depth_topic",
@@ -245,6 +245,7 @@ class ObjectDetector(Node):
         self.declare_parameter("confidence_threshold", 0.35)
         self.declare_parameter("iou_threshold", 0.45)
         self.declare_parameter("max_fps", 30.0)
+        self.declare_parameter("jpeg_quality", 85)
         self.declare_parameter("tracking_iou_threshold", 0.3)
         self.declare_parameter("tracking_max_age_seconds", 1.0)
         self.declare_parameter("follow_person_enabled", False)
@@ -291,6 +292,9 @@ class ObjectDetector(Node):
         )
         max_fps = max(0.1, float(self.get_parameter("max_fps").value))
         self._minimum_frame_interval = 1.0 / max_fps
+        self._jpeg_quality = min(
+            100, max(1, int(self.get_parameter("jpeg_quality").value))
+        )
         self._tracking_iou = min(
             1.0,
             max(
@@ -382,7 +386,7 @@ class ObjectDetector(Node):
             raise RuntimeError(f"TensorRT engine was not found at {model_path!r}")
 
         self._annotated_publisher = self.create_publisher(
-            Image, annotated_topic, qos_profile_sensor_data
+            CompressedImage, annotated_topic, qos_profile_sensor_data
         )
         self._detections_publisher = self.create_publisher(
             String, detections_topic, 10
@@ -397,7 +401,7 @@ class ObjectDetector(Node):
             10,
         )
         self._subscription = self.create_subscription(
-            Image,
+            CompressedImage,
             input_topic,
             self._image_callback,
             qos_profile_sensor_data,
@@ -425,7 +429,12 @@ class ObjectDetector(Node):
         self._last_processed_at = now
         started_at = time.monotonic()
         try:
-            frame = self._raw_image_to_bgr(message)
+            frame = cv2.imdecode(
+                np.frombuffer(message.data, dtype=np.uint8),
+                cv2.IMREAD_COLOR,
+            )
+            if frame is None:
+                raise ValueError("Cannot decode compressed camera frame")
             output = self._model.infer(frame)
             raw_detections = decode_yolov5_output(output, self._confidence)
             raw_detections = non_maximum_suppression(raw_detections, self._iou)
@@ -453,33 +462,6 @@ class ObjectDetector(Node):
             self._publish_annotated_image(message, frame)
         except Exception as error:
             self.get_logger().error(f"Object detection error: {error}")
-
-    @staticmethod
-    def _raw_image_to_bgr(message):
-        channels_by_encoding = {
-            "bgr8": 3,
-            "rgb8": 3,
-            "bgra8": 4,
-            "rgba8": 4,
-        }
-        channels = channels_by_encoding.get(message.encoding)
-        if channels is None:
-            raise ValueError(
-                f"Unsupported color image encoding: {message.encoding}"
-            )
-        row = np.frombuffer(message.data, dtype=np.uint8).reshape(
-            message.height, message.step
-        )
-        image = row[:, : message.width * channels].reshape(
-            message.height, message.width, channels
-        )
-        if message.encoding == "rgb8":
-            return cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-        if message.encoding == "rgba8":
-            return cv2.cvtColor(image, cv2.COLOR_RGBA2BGR)
-        if message.encoding == "bgra8":
-            return cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
-        return np.ascontiguousarray(image)
 
     def _depth_callback(self, message):
         now = time.monotonic()
@@ -948,14 +930,17 @@ class ObjectDetector(Node):
         self._detections_publisher.publish(output)
 
     def _publish_annotated_image(self, source_message, frame):
-        output = Image()
+        encoded, data = cv2.imencode(
+            ".jpg",
+            frame,
+            [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality],
+        )
+        if not encoded:
+            raise ValueError("Cannot encode annotated camera frame")
+        output = CompressedImage()
         output.header = source_message.header
-        output.height = frame.shape[0]
-        output.width = frame.shape[1]
-        output.encoding = "bgr8"
-        output.is_bigendian = False
-        output.step = frame.shape[1] * 3
-        output.data = np.ascontiguousarray(frame).tobytes()
+        output.format = "jpeg"
+        output.data = data.tobytes()
         self._annotated_publisher.publish(output)
 
 
