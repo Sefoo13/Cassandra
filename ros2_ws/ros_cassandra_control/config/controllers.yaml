@@ -50,8 +50,8 @@ diff_controller:
     linear.x.has_velocity_limits: true
     # linear.x.has_acceleration_limits: false
     # linear.x.has_jerk_limits: false
-    linear.x.max_velocity: 0.5
-    linear.x.min_velocity: -0.5
+    linear.x.max_velocity: 3.0
+    linear.x.min_velocity: -3.0
     # linear.x.max_acceleration: NAN
     # linear.x.min_acceleration: NAN
     # linear.x.max_jerk: NAN
@@ -60,8 +60,8 @@ diff_controller:
     angular.z.has_velocity_limits: true
     # angular.z.has_acceleration_limits: false
     # angular.z.has_jerk_limits: false
-    angular.z.max_velocity: 1.0
-    angular.z.min_velocity: -1.0
+    angular.z.max_velocity: 3.0
+    angular.z.min_velocity: -3.0
     # angular.z.max_acceleration: NAN
     # angular.z.min_acceleration: NAN
     # angular.z.max_jerk: NAN

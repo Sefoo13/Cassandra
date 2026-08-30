@@ -1,7 +1,8 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
     <xacro:arg name="dc_motor_dry_run" default="false"/>
-    <xacro:property name="max_wheel_speed_rad_s" value="16.6666666667"/>
+    <!-- 3.0 m/s / 0.03 m wheel radius = 100 rad/s -->
+    <xacro:property name="max_wheel_speed_rad_s" value="100.0"/>
 
     <ros2_control name="CassandraBaseHardware" type="system">
         <hardware>
@@ -10,7 +11,7 @@
             <param name="i2c_address">0x40</param>
             <param name="pwm_frequency">1000</param>
             <param name="min_pwm_percent">8.0</param>
-            <param name="max_pwm_percent">15.0</param>
+            <param name="max_pwm_percent">100.0</param>
             <param name="max_wheel_speed_rad_s">${max_wheel_speed_rad_s}</param>
             <param name="command_deadband_rad_s">0.05</param>
             <param name="linear_velocity_state_scale">0.5</param>
