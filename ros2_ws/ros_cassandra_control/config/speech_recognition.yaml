@@ -12,11 +12,12 @@
     mixer_control: "PCM"
     mixer_element: 1
     mixer_volume_percent: 70
-    input_gain: 1.5
+    input_gain: 2.0
     block_size: 4000
     playback_recognized_audio: true
     playback_output_device: ""
     playback_max_seconds: 15.0
+    playback_gain: 2.0
     speak_recognized_text: true
     speak_service: /speak
     speaking_topic: /voice/speaking

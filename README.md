@@ -32,7 +32,8 @@ an audio feedback loop. `playback_output_device` selects a SoundDevice output.
 When it is empty, the node first searches for a ReSpeaker/XVF3800 output and
 falls back to the system default only if none is available. Disable this option
 after microphone testing to avoid adding playback latency to normal voice
-interaction.
+interaction. `playback_gain` changes only diagnostic playback volume and does
+not alter the audio sent to the recognizer.
 
 ## Short ChatGPT responses
 

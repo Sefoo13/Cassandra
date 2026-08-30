@@ -78,6 +78,10 @@ class SpeechRecognitionNode(Node):
             1.0,
             float(self.get_parameter("playback_max_seconds").value),
         )
+        self._playback_gain = max(
+            0.1,
+            float(self.get_parameter("playback_gain").value),
+        )
         speak_service = str(self.get_parameter("speak_service").value)
         speaking_topic = str(self.get_parameter("speaking_topic").value)
         self._listen_cooldown = float(
@@ -291,6 +295,10 @@ class SpeechRecognitionNode(Node):
                 self._sample_rate,
                 output_sample_rate,
             )
+            playback_audio = self._apply_pcm_gain(
+                playback_audio,
+                self._playback_gain,
+            )
             with sd.RawOutputStream(
                 samplerate=output_sample_rate,
                 device=output_device,
@@ -301,7 +309,7 @@ class SpeechRecognitionNode(Node):
             output_name = str(output_info["name"])
             self.get_logger().info(
                 f"Played captured phrase on {output_name} at "
-                f"{output_sample_rate} Hz"
+                f"{output_sample_rate} Hz with gain {self._playback_gain:g}x"
             )
         except Exception as error:
             self.get_logger().warning(
@@ -335,6 +343,16 @@ class SpeechRecognitionNode(Node):
             "No ReSpeaker/XVF3800 output found; using the system default"
         )
         return None
+
+    @staticmethod
+    def _apply_pcm_gain(audio, gain):
+        """Apply a bounded gain to signed 16-bit PCM playback audio."""
+        if gain == 1.0:
+            return audio
+
+        samples = np.frombuffer(audio, dtype=np.int16).astype(np.float32)
+        samples *= gain
+        return np.clip(samples, -32768, 32767).astype(np.int16).tobytes()
 
     @staticmethod
     def _resample_audio(audio, source_rate, target_rate):
