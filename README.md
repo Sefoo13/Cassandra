@@ -271,6 +271,13 @@ alignment are disabled by default on the Jetson Nano to keep the RealSense
 color stream stable. This backend uses TensorRT and PyCUDA directly and does
 not require PyTorch or Ultralytics.
 
+Person following is enabled by default. The detector keeps the current person
+tracking ID and publishes `head_left`, `head_center`, or `head_right` on
+`/ros_cassandra/servos/pose`. A center dead zone and command interval prevent
+rapid servo oscillation. If the person is lost, the head returns to center
+after two seconds. Set `follow_person_enabled: false` in
+`config/object_detection.yaml` to disable automatic head motion.
+
 On the Jetson Nano/L4T R32, run this node in the `dusty` container, whose base
 image provides the matching L4T TensorRT runtime. Both containers use host ROS
 networking, so its topics are visible to Cassandra:

@@ -248,6 +248,14 @@ class ObjectDetector(Node):
         self.declare_parameter("jpeg_quality", 85)
         self.declare_parameter("tracking_iou_threshold", 0.3)
         self.declare_parameter("tracking_max_age_seconds", 1.0)
+        self.declare_parameter("follow_person_enabled", True)
+        self.declare_parameter(
+            "servo_pose_topic", "/ros_cassandra/servos/pose"
+        )
+        self.declare_parameter("follow_min_confidence", 0.5)
+        self.declare_parameter("follow_dead_zone_ratio", 0.15)
+        self.declare_parameter("follow_command_interval_seconds", 0.75)
+        self.declare_parameter("follow_lost_timeout_seconds", 2.0)
 
         if trt is None or cuda is None:
             raise RuntimeError(
@@ -259,6 +267,7 @@ class ObjectDetector(Node):
         depth_topic = str(self.get_parameter("depth_topic").value)
         annotated_topic = str(self.get_parameter("annotated_topic").value)
         detections_topic = str(self.get_parameter("detections_topic").value)
+        servo_pose_topic = str(self.get_parameter("servo_pose_topic").value)
         self._confidence = min(
             1.0,
             max(0.0, float(self.get_parameter("confidence_threshold").value)),
@@ -284,6 +293,33 @@ class ObjectDetector(Node):
             0.1,
             float(self.get_parameter("tracking_max_age_seconds").value),
         )
+        self._follow_person_enabled = bool(
+            self.get_parameter("follow_person_enabled").value
+        )
+        self._follow_min_confidence = min(
+            1.0,
+            max(
+                0.0,
+                float(self.get_parameter("follow_min_confidence").value),
+            ),
+        )
+        self._follow_dead_zone = min(
+            0.45,
+            max(
+                0.05,
+                float(self.get_parameter("follow_dead_zone_ratio").value),
+            ),
+        )
+        self._follow_command_interval = max(
+            0.1,
+            float(
+                self.get_parameter("follow_command_interval_seconds").value
+            ),
+        )
+        self._follow_lost_timeout = max(
+            0.5,
+            float(self.get_parameter("follow_lost_timeout_seconds").value),
+        )
         self._last_processed_at = 0.0
         self._last_inference_finished_at = 0.0
         self._processing_fps = 0.0
@@ -295,7 +331,14 @@ class ObjectDetector(Node):
         self._temperature_c = None
         self._gpu_load_percent = None
         self._cpu_load_percent = None
+        self._previous_cpu_total = None
+        self._previous_cpu_idle = None
         self._thermal_paths = glob.glob("/sys/class/thermal/thermal_zone*/temp")
+        self._followed_track_id = None
+        self._last_person_seen_at = 0.0
+        self._last_head_command_at = 0.0
+        self._last_head_pose = None
+        self._follow_status = "waiting"
 
         configured_model = str(self.get_parameter("model_path").value).strip()
         model_path = configured_model or os.path.join(
@@ -311,6 +354,9 @@ class ObjectDetector(Node):
         )
         self._detections_publisher = self.create_publisher(
             String, detections_topic, 10
+        )
+        self._servo_pose_publisher = self.create_publisher(
+            String, servo_pose_topic, 10
         )
         self._subscription = self.create_subscription(
             CompressedImage,
@@ -353,6 +399,11 @@ class ObjectDetector(Node):
             detections = self._map_detections(raw_detections, frame.shape)
             self._assign_tracking_ids(detections, finished_at=time.monotonic())
             self._add_spatial_data(detections, frame.shape)
+            self._update_person_following(
+                detections,
+                frame.shape,
+                time.monotonic(),
+            )
             finished_at = time.monotonic()
             elapsed_ms = (finished_at - started_at) * 1000.0
             self._update_processing_fps(finished_at)
@@ -365,7 +416,7 @@ class ObjectDetector(Node):
                 frame.shape,
             )
             self._draw_detections(frame, detections)
-            self._draw_hud(frame, detections, elapsed_ms)
+            frame = self._add_hud(frame, detections, elapsed_ms)
             self._publish_annotated_image(message, frame)
         except Exception as error:
             self.get_logger().error(f"Object detection error: {error}")
@@ -515,6 +566,81 @@ class ObjectDetector(Node):
             return None
         return round(float(np.median(valid)), 2)
 
+    def _update_person_following(self, detections, frame_shape, now):
+        if not self._follow_person_enabled:
+            self._follow_status = "disabled"
+            return
+
+        people = [
+            detection
+            for detection in detections
+            if detection["label"] == "person"
+            and detection["confidence"] >= self._follow_min_confidence
+        ]
+        followed_person = next(
+            (
+                person
+                for person in people
+                if person["track_id"] == self._followed_track_id
+            ),
+            None,
+        )
+        if followed_person is None and people:
+            followed_person = max(
+                people,
+                key=lambda person: (
+                    (person["bbox"]["x2"] - person["bbox"]["x1"])
+                    * (person["bbox"]["y2"] - person["bbox"]["y1"])
+                    * person["confidence"]
+                ),
+            )
+            self._followed_track_id = followed_person["track_id"]
+
+        if followed_person is None:
+            if (
+                self._followed_track_id is not None
+                and now - self._last_person_seen_at >= self._follow_lost_timeout
+            ):
+                self._publish_head_pose("head_center", now)
+                self._followed_track_id = None
+                self._follow_status = "lost - centering"
+            elif self._followed_track_id is None:
+                self._follow_status = "waiting"
+            else:
+                self._follow_status = "temporarily lost"
+            return
+
+        self._last_person_seen_at = now
+        frame_width = max(1, frame_shape[1])
+        center_ratio = followed_person["center"]["x"] / frame_width
+        left_boundary = 0.5 - self._follow_dead_zone
+        right_boundary = 0.5 + self._follow_dead_zone
+        if center_ratio < left_boundary:
+            pose = "head_left"
+            direction = "left"
+        elif center_ratio > right_boundary:
+            pose = "head_right"
+            direction = "right"
+        else:
+            pose = "head_center"
+            direction = "center"
+        self._follow_status = (
+            f"person #{self._followed_track_id} {direction}"
+        )
+        self._publish_head_pose(pose, now)
+
+    def _publish_head_pose(self, pose, now):
+        if pose == self._last_head_pose:
+            return
+        if now - self._last_head_command_at < self._follow_command_interval:
+            return
+        message = String()
+        message.data = pose
+        self._servo_pose_publisher.publish(message)
+        self._last_head_pose = pose
+        self._last_head_command_at = now
+        self.get_logger().info(f"Person following head pose: {pose}")
+
     @staticmethod
     def _draw_detections(frame, detections):
         for detection in detections:
@@ -577,16 +703,47 @@ class ObjectDetector(Node):
                 self._gpu_load_percent = float(load_file.read().strip()) / 10.0
         except (OSError, ValueError):
             self._gpu_load_percent = None
-        try:
-            cpu_count = max(1, os.cpu_count() or 1)
-            self._cpu_load_percent = min(
-                999.0, os.getloadavg()[0] * 100.0 / cpu_count
-            )
-        except OSError:
-            self._cpu_load_percent = None
+        self._cpu_load_percent = self._read_cpu_usage()
 
-    def _draw_hud(self, frame, detections, inference_ms):
+    def _read_cpu_usage(self):
+        try:
+            with open("/proc/stat", "r", encoding="ascii") as stat_file:
+                fields = stat_file.readline().split()
+            if not fields or fields[0] != "cpu":
+                return None
+            counters = [int(value) for value in fields[1:]]
+            if len(counters) < 4:
+                return None
+            idle = counters[3] + (counters[4] if len(counters) > 4 else 0)
+            total = sum(counters)
+            if self._previous_cpu_total is None:
+                usage = None
+            else:
+                total_delta = total - self._previous_cpu_total
+                idle_delta = idle - self._previous_cpu_idle
+                if total_delta <= 0:
+                    usage = None
+                else:
+                    usage = 100.0 * (total_delta - idle_delta) / total_delta
+                    usage = min(100.0, max(0.0, usage))
+            self._previous_cpu_total = total
+            self._previous_cpu_idle = idle
+            return usage
+        except (OSError, ValueError):
+            return None
+
+    def _add_hud(self, frame, detections, inference_ms):
         height, width = frame.shape[:2]
+        header_height = 96
+        output = cv2.copyMakeBorder(
+            frame,
+            header_height,
+            0,
+            0,
+            0,
+            cv2.BORDER_CONSTANT,
+            value=(0, 0, 0),
+        )
         temperature = (
             "--" if self._temperature_c is None else f"{self._temperature_c:.0f}C"
         )
@@ -608,20 +765,28 @@ class ObjectDetector(Node):
             f"GPU {gpu_load} | CPU {cpu_load} | Temp {temperature} | "
             f"{time.strftime('%H:%M:%S')}"
         )
-        cv2.rectangle(frame, (5, 5), (min(width - 5, 620), 66), (0, 0, 0), -1)
         cv2.putText(
-            frame,
+            output,
             first_line,
-            (12, 28),
+            (12, 26),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.55,
             (0, 255, 0),
             1,
         )
         cv2.putText(
-            frame,
+            output,
+            f"Follow: {self._follow_status}",
+            (12, 78),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (255, 255, 0),
+            1,
+        )
+        cv2.putText(
+            output,
             second_line,
-            (12, 54),
+            (12, 52),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.5,
             (0, 255, 0),
@@ -632,14 +797,18 @@ class ObjectDetector(Node):
                 "NO DETECTIONS", cv2.FONT_HERSHEY_SIMPLEX, 1.0, 2
             )[0]
             cv2.putText(
-                frame,
+                output,
                 "NO DETECTIONS",
-                ((width - text_size[0]) // 2, height // 2),
+                (
+                    (width - text_size[0]) // 2,
+                    header_height + height // 2,
+                ),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 1.0,
                 (0, 0, 255),
                 2,
             )
+        return output
 
     def _publish_detections(
         self,
@@ -667,6 +836,12 @@ class ObjectDetector(Node):
                     "temperature_c": self._temperature_c,
                     "gpu_load_percent": self._gpu_load_percent,
                     "cpu_load_percent": self._cpu_load_percent,
+                },
+                "person_following": {
+                    "enabled": self._follow_person_enabled,
+                    "track_id": self._followed_track_id,
+                    "status": self._follow_status,
+                    "head_pose": self._last_head_pose,
                 },
                 "count": len(detections),
                 "detections": detections,

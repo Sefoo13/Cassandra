@@ -11,3 +11,9 @@
     jpeg_quality: 85
     tracking_iou_threshold: 0.3
     tracking_max_age_seconds: 1.0
+    follow_person_enabled: true
+    servo_pose_topic: /ros_cassandra/servos/pose
+    follow_min_confidence: 0.5
+    follow_dead_zone_ratio: 0.15
+    follow_command_interval_seconds: 0.75
+    follow_lost_timeout_seconds: 2.0
