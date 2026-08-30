@@ -273,12 +273,13 @@ networking, so its topics are visible to Cassandra:
 ```bash
 docker compose build dusty
 docker compose up -d --force-recreate dusty
-docker compose exec dusty bash
-source /opt/ros/humble/setup.bash
-cd /ros2_ws
-colcon build --symlink-install --packages-select vision_recognition_pkg
-source install/setup.bash
-ros2 launch vision_recognition_pkg object_detection.launch.py
+```
+
+The `dusty` service performs the incremental package build and launches the
+detector automatically whenever the container starts. Follow its output with:
+
+```bash
+docker compose logs -f dusty
 ```
 
 Inspect detections with:

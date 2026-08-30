@@ -46,6 +46,9 @@ RUN python3 -m pip install \
     rosdep \
     pycuda==2020.1
 
+# Fail during image construction instead of much later when the ROS node starts.
+RUN python3 -c "import tensorrt; import pycuda.driver; print('TensorRT/PyCUDA OK')"
+
 RUN rosdep init || true
 
 WORKDIR $ROS_WS
