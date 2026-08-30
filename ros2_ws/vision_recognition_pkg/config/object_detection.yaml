@@ -1,0 +1,12 @@
+/object_detector:
+  ros__parameters:
+    input_topic: /camera/realsense2_camera/color/image_raw/compressed
+    annotated_topic: /vision/objects
+    detections_topic: /vision/detections
+    model_path: ""
+    confidence_threshold: 0.35
+    iou_threshold: 0.45
+    max_fps: 5.0
+    image_size: 640
+    device: auto
+    jpeg_quality: 85
