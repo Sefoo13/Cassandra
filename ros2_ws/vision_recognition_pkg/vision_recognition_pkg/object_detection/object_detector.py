@@ -616,10 +616,10 @@ class ObjectDetector(Node):
         left_boundary = 0.5 - self._follow_dead_zone
         right_boundary = 0.5 + self._follow_dead_zone
         if center_ratio < left_boundary:
-            pose = "head_left"
+            pose = "head_right"
             direction = "left"
         elif center_ratio > right_boundary:
-            pose = "head_right"
+            pose = "head_left"
             direction = "right"
         else:
             pose = "head_center"
