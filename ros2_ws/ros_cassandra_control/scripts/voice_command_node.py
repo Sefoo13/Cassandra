@@ -152,7 +152,7 @@ class VoiceCommandNode(Node):
             return -self._reverse_speed, 0.0, "backward"
         if self._contains_any(
             text,
-            ("вперед", "уперед", "їдь вперед", "їдь уперед", "рухайся прямо"),
+            ("вперед", "перед", "уперед", "їдь вперед", "їдь уперед", "рухайся прямо"),
         ):
             return self._linear_speed, 0.0, "forward"
         if self._contains_any(text, ("ліворуч", "вліво", "поверни наліво")):
