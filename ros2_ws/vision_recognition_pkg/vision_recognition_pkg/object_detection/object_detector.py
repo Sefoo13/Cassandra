@@ -288,6 +288,7 @@ class ObjectDetector(Node):
         self._last_inference_finished_at = 0.0
         self._processing_fps = 0.0
         self._latest_depth = None
+        self._last_depth_processed_at = 0.0
         self._tracks = {}
         self._next_track_id = 1
         self._last_system_stats_at = 0.0
@@ -370,6 +371,10 @@ class ObjectDetector(Node):
             self.get_logger().error(f"Object detection error: {error}")
 
     def _depth_callback(self, message):
+        now = time.monotonic()
+        if now - self._last_depth_processed_at < 0.2:
+            return
+        self._last_depth_processed_at = now
         try:
             if message.encoding in ("16UC1", "mono16"):
                 dtype = np.dtype(">u2" if message.is_bigendian else "<u2")
