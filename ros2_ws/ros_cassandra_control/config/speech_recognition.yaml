@@ -23,6 +23,9 @@
     listen_cooldown_seconds: 0.5
     wake_word_enabled: true
     wake_words: ["команда"]
-    wake_acknowledgement: "Слухаю"
+    wake_acknowledgement: "Режим команд увімкнено"
+    command_mode_persistent: true
+    command_exit_words: ["вихід", "вийти", "завершити режим команд"]
+    command_exit_acknowledgement: "Режим команд вимкнено"
     command_window_seconds: 15.0
     always_active_commands: ["стоп", "стій", "зупинись", "зупинися"]

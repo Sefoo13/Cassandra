@@ -28,9 +28,11 @@ The node starts from `foxglove.launch.py`. Its parameters are stored in
 For microphone diagnostics, `playback_recognized_audio` replays the captured
 PCM audio after Vosk detects the end of a non-empty phrase. Microphone capture
 is ignored during playback and for the configured listening cooldown to avoid
-an audio feedback loop. `playback_output_device` selects a SoundDevice output;
-an empty value uses the system default. Disable this option after microphone
-testing to avoid adding playback latency to normal voice interaction.
+an audio feedback loop. `playback_output_device` selects a SoundDevice output.
+When it is empty, the node first searches for a ReSpeaker/XVF3800 output and
+falls back to the system default only if none is available. Disable this option
+after microphone testing to avoid adding playback latency to normal voice
+interaction.
 
 ## Short ChatGPT responses
 
@@ -64,16 +66,21 @@ ros2 topic echo /chat/response
 Configuration and safety limits are stored in `config/voice_command.yaml`.
 
 Normal speech is published on `/voice/transcript` and repeated through Piper.
-Commands require the wake word `команда`. When the wake word is detected, the
-robot says `Слухаю` and accepts one command for the next fifteen seconds. Both
-forms are supported:
+Commands require the wake word `команда`. With persistent command mode enabled,
+the robot announces that command mode is active and routes subsequent phrases
+to `/voice/command` until it hears `вихід`, `вийти`, or
+`завершити режим команд`. It then announces that command mode is off. Both an
+inline first command and separate commands are supported:
 
 ```text
 Команда, вперед
 
 Команда
-(robot: Слухаю)
+(robot: Режим команд увімкнено)
 поверни голову ліворуч
+підніми руки
+вихід
+(robot: Режим команд вимкнено)
 ```
 
 Supported examples:

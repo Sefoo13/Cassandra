@@ -94,6 +94,17 @@ class SpeechRecognitionNode(Node):
         self._wake_acknowledgement = str(
             self.get_parameter("wake_acknowledgement").value
         ).strip()
+        self._command_mode_persistent = bool(
+            self.get_parameter("command_mode_persistent").value
+        )
+        self._command_exit_words = tuple(
+            str(word).lower().strip()
+            for word in self.get_parameter("command_exit_words").value
+            if str(word).strip()
+        )
+        self._command_exit_acknowledgement = str(
+            self.get_parameter("command_exit_acknowledgement").value
+        ).strip()
         self._command_window = max(
             0.1,
             float(self.get_parameter("command_window_seconds").value),
@@ -267,8 +278,9 @@ class SpeechRecognitionNode(Node):
         self._playing_back.set()
         self._clear_audio_queue()
         try:
+            output_device = self._resolve_playback_output_device()
             output_info = sd.query_devices(
-                self._playback_output_device,
+                output_device,
                 "output",
             )
             output_sample_rate = int(
@@ -281,7 +293,7 @@ class SpeechRecognitionNode(Node):
             )
             with sd.RawOutputStream(
                 samplerate=output_sample_rate,
-                device=self._playback_output_device,
+                device=output_device,
                 dtype="int16",
                 channels=1,
             ) as stream:
@@ -300,6 +312,29 @@ class SpeechRecognitionNode(Node):
                 time.monotonic() + self._listen_cooldown
             )
             self._playing_back.clear()
+
+    def _resolve_playback_output_device(self):
+        """Prefer an XVF3800 output when no playback device is configured."""
+        if self._playback_output_device is not None:
+            return self._playback_output_device
+
+        devices = sd.query_devices()
+        for index, device in enumerate(devices):
+            name = str(device.get("name", "")).lower()
+            if (
+                int(device.get("max_output_channels", 0)) > 0
+                and ("xvf3800" in name or "respeaker" in name)
+            ):
+                self.get_logger().info(
+                    f"Automatically selected playback device: "
+                    f"{device['name']} (index {index})"
+                )
+                return index
+
+        self.get_logger().warning(
+            "No ReSpeaker/XVF3800 output found; using the system default"
+        )
+        return None
 
     @staticmethod
     def _resample_audio(audio, source_rate, target_rate):
@@ -342,9 +377,21 @@ class SpeechRecognitionNode(Node):
 
         now = time.monotonic()
         normalized = transcript.lower().strip()
+        if (
+            now <= self._command_mode_until
+            and normalized in self._command_exit_words
+        ):
+            self._command_mode_until = 0.0
+            self._pending_command_window = False
+            self.get_logger().info("Command mode deactivated")
+            if self._command_exit_acknowledgement:
+                self._speak(self._command_exit_acknowledgement)
+            return True
+
         if normalized in self._always_active_commands:
             self._publish_command(normalized)
-            self._command_mode_until = 0.0
+            if not self._command_mode_persistent:
+                self._command_mode_until = 0.0
             return True
 
         for wake_word in self._wake_words:
@@ -359,7 +406,7 @@ class SpeechRecognitionNode(Node):
                 if self._wake_acknowledgement:
                     self._speak(self._wake_acknowledgement)
                 self._publish_command(command)
-                self._command_mode_until = 0.0
+                self._activate_command_window()
             elif self._wake_acknowledgement:
                 self._command_mode_until = float("inf")
                 self._pending_command_window = True
@@ -372,7 +419,8 @@ class SpeechRecognitionNode(Node):
 
         if now <= self._command_mode_until:
             self._publish_command(transcript)
-            self._command_mode_until = 0.0
+            if not self._command_mode_persistent:
+                self._command_mode_until = 0.0
             return True
 
         self._command_mode_until = 0.0
@@ -383,10 +431,16 @@ class SpeechRecognitionNode(Node):
         self.get_logger().info(f"Voice command: {command!r}")
 
     def _activate_command_window(self):
-        self._command_mode_until = time.monotonic() + self._command_window
-        self.get_logger().info(
-            f"Waiting for one voice command for {self._command_window:.1f}s"
-        )
+        if self._command_mode_persistent:
+            self._command_mode_until = float("inf")
+            self.get_logger().info(
+                "Command mode activated; waiting for an exit phrase"
+            )
+        else:
+            self._command_mode_until = time.monotonic() + self._command_window
+            self.get_logger().info(
+                f"Waiting for one voice command for {self._command_window:.1f}s"
+            )
 
     @staticmethod
     def _publish_text(publisher, text):
