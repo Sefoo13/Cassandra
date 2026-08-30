@@ -318,12 +318,14 @@ class ObjectDetector(Node):
             self._image_callback,
             qos_profile_sensor_data,
         )
-        self._depth_subscription = self.create_subscription(
-            Image,
-            depth_topic,
-            self._depth_callback,
-            qos_profile_sensor_data,
-        )
+        self._depth_subscription = None
+        if depth_topic:
+            self._depth_subscription = self.create_subscription(
+                Image,
+                depth_topic,
+                self._depth_callback,
+                qos_profile_sensor_data,
+            )
         self.get_logger().info(f"Loading TensorRT engine: {model_path}")
         self._model = TensorRTModel(model_path)
         self.get_logger().info(
@@ -351,7 +353,6 @@ class ObjectDetector(Node):
             detections = self._map_detections(raw_detections, frame.shape)
             self._assign_tracking_ids(detections, finished_at=time.monotonic())
             self._add_spatial_data(detections, frame.shape)
-            target_track_id = self._select_target(detections)
             finished_at = time.monotonic()
             elapsed_ms = (finished_at - started_at) * 1000.0
             self._update_processing_fps(finished_at)
@@ -362,10 +363,9 @@ class ObjectDetector(Node):
                 elapsed_ms,
                 self._processing_fps,
                 frame.shape,
-                target_track_id,
             )
-            self._draw_detections(frame, detections, target_track_id)
-            self._draw_hud(frame, detections, elapsed_ms, target_track_id)
+            self._draw_detections(frame, detections)
+            self._draw_hud(frame, detections, elapsed_ms)
             self._publish_annotated_image(message, frame)
         except Exception as error:
             self.get_logger().error(f"Object detection error: {error}")
@@ -516,37 +516,21 @@ class ObjectDetector(Node):
         return round(float(np.median(valid)), 2)
 
     @staticmethod
-    def _select_target(detections):
-        people = [item for item in detections if item["label"] == "person"]
-        if not people:
-            return None
-        people_with_depth = [
-            item for item in people if item["distance_m"] is not None
-        ]
-        if people_with_depth:
-            target = min(people_with_depth, key=lambda item: item["distance_m"])
-        else:
-            target = max(people, key=lambda item: item["confidence"])
-        return target["track_id"]
-
-    @staticmethod
-    def _draw_detections(frame, detections, target_track_id):
+    def _draw_detections(frame, detections):
         for detection in detections:
             box = detection["bbox"]
             first = (int(box["x1"]), int(box["y1"]))
             second = (int(box["x2"]), int(box["y2"]))
-            is_target = detection["track_id"] == target_track_id
-            color = (0, 0, 255) if is_target else (0, 255, 0)
-            thickness = 3 if is_target else 2
+            color = (0, 255, 0)
+            thickness = 2
             distance = detection["distance_m"]
             distance_label = "" if distance is None else f" {distance:.2f}m"
-            target_label = " TARGET" if is_target else ""
             cv2.rectangle(frame, first, second, color, thickness)
             cv2.putText(
                 frame,
                 f"#{detection['track_id']} {detection['label']} "
                 f"{detection['confidence']:.2f} {detection['direction']}"
-                f"{distance_label}{target_label}",
+                f"{distance_label}",
                 (first[0], max(0, first[1] - 5)),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.5,
@@ -601,7 +585,7 @@ class ObjectDetector(Node):
         except OSError:
             self._cpu_load_percent = None
 
-    def _draw_hud(self, frame, detections, inference_ms, target_track_id):
+    def _draw_hud(self, frame, detections, inference_ms):
         height, width = frame.shape[:2]
         temperature = (
             "--" if self._temperature_c is None else f"{self._temperature_c:.0f}C"
@@ -656,16 +640,6 @@ class ObjectDetector(Node):
                 (0, 0, 255),
                 2,
             )
-        elif target_track_id is not None:
-            cv2.putText(
-                frame,
-                f"TARGET: person #{target_track_id}",
-                (12, 88),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                (0, 0, 255),
-                2,
-            )
 
     def _publish_detections(
         self,
@@ -674,7 +648,6 @@ class ObjectDetector(Node):
         elapsed_ms,
         processing_fps,
         frame_shape,
-        target_track_id,
     ):
         output = String()
         output.data = json.dumps(
@@ -695,7 +668,6 @@ class ObjectDetector(Node):
                     "gpu_load_percent": self._gpu_load_percent,
                     "cpu_load_percent": self._cpu_load_percent,
                 },
-                "target_track_id": target_track_id,
                 "count": len(detections),
                 "detections": detections,
             },

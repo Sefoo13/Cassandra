@@ -6,10 +6,10 @@ from launch_ros.actions import Node
 def generate_launch_description():
     params = {
         "device_type": "D435",
-        "enable_depth": True,
+        "enable_depth": False,
         "enable_color": True,
-        "enable_sync": True,
-        "align_depth.enable": True,
+        "enable_sync": False,
+        "align_depth.enable": False,
         "depth_module.profile": "640x480x15",
         "rgb_camera.profile": "640x480x15",
         "depth_fps": 15,

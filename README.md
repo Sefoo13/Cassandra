@@ -266,8 +266,10 @@ YOLOv5n TensorRT engine, publishes the annotated JPEG stream on
 are configured in `config/object_detection.yaml`. The overlay includes FPS,
 inference latency, Jetson load and temperature, object count, tracking IDs,
 centers, directions, and the selected person target. When aligned RealSense
-depth is available, detections also include `distance_m`. This backend uses
-TensorRT and PyCUDA directly and does not require PyTorch or Ultralytics.
+depth is enabled and available, detections also include `distance_m`. Depth and
+alignment are disabled by default on the Jetson Nano to keep the RealSense
+color stream stable. This backend uses TensorRT and PyCUDA directly and does
+not require PyTorch or Ultralytics.
 
 On the Jetson Nano/L4T R32, run this node in the `dusty` container, whose base
 image provides the matching L4T TensorRT runtime. Both containers use host ROS
