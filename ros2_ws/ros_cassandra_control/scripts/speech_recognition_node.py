@@ -267,16 +267,29 @@ class SpeechRecognitionNode(Node):
         self._playing_back.set()
         self._clear_audio_queue()
         try:
+            output_info = sd.query_devices(
+                self._playback_output_device,
+                "output",
+            )
+            output_sample_rate = int(
+                round(float(output_info["default_samplerate"]))
+            )
+            playback_audio = self._resample_audio(
+                audio,
+                self._sample_rate,
+                output_sample_rate,
+            )
             with sd.RawOutputStream(
-                samplerate=self._sample_rate,
+                samplerate=output_sample_rate,
                 device=self._playback_output_device,
                 dtype="int16",
                 channels=1,
             ) as stream:
-                stream.write(audio)
-            output_name = self._playback_output_device or "system default"
+                stream.write(playback_audio)
+            output_name = str(output_info["name"])
             self.get_logger().info(
-                f"Played captured phrase on {output_name}"
+                f"Played captured phrase on {output_name} at "
+                f"{output_sample_rate} Hz"
             )
         except Exception as error:
             self.get_logger().warning(
@@ -287,6 +300,34 @@ class SpeechRecognitionNode(Node):
                 time.monotonic() + self._listen_cooldown
             )
             self._playing_back.clear()
+
+    @staticmethod
+    def _resample_audio(audio, source_rate, target_rate):
+        """Linearly resample mono signed 16-bit PCM for diagnostic playback."""
+        if source_rate == target_rate:
+            return audio
+
+        samples = np.frombuffer(audio, dtype=np.int16)
+        if samples.size < 2:
+            return audio
+
+        output_size = max(
+            1,
+            int(round(samples.size * target_rate / source_rate)),
+        )
+        source_positions = np.arange(samples.size, dtype=np.float64)
+        target_positions = np.linspace(
+            0,
+            samples.size - 1,
+            output_size,
+            dtype=np.float64,
+        )
+        resampled = np.interp(
+            target_positions,
+            source_positions,
+            samples,
+        )
+        return np.clip(resampled, -32768, 32767).astype(np.int16).tobytes()
 
     def _clear_audio_queue(self):
         while not self._audio_queue.empty():
