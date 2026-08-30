@@ -253,8 +253,28 @@ colcon build && source install/setup.sh && ros2 launch ros_cassandra_control cas
 ros2 run vision_recognition_pkg face_detector
 source install/setup.sh && ros2 run vision_recognition_pkg object_detector
 
+The configurable YOLO detector can also be started with:
+
+```bash
+ros2 launch vision_recognition_pkg object_detection.launch.py
+```
+
+It subscribes to the compressed RealSense color stream, publishes the annotated
+JPEG stream on `/vision/objects`, and publishes JSON detection records on
+`/vision/detections`. Confidence, IoU, inference device, image size, and maximum
+processing FPS are configured in `config/object_detection.yaml`. On Jetson,
+install the NVIDIA-compatible PyTorch build first, then install Ultralytics
+without replacing that PyTorch build:
+
+```bash
 python3 -m pip install ultralytics --no-deps
-python3 -m pip install torch torchvision torchaudio
+```
+
+Inspect detections with:
+
+```bash
+ros2 topic echo /vision/detections
+```
 
 cd .. && source opt/ros/humble/setup.sh && cd ros2_ws/ && ros2 run usb_cam usb_cam_node_exe --ros-args -p video_device:=/dev/video2 -p pixel_format:=yuyv2rgb
 
