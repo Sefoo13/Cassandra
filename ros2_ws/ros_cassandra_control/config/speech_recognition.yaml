@@ -12,7 +12,7 @@
     mixer_control: "PCM"
     mixer_element: 1
     mixer_volume_percent: 70
-    input_gain: 1.0
+    input_gain: 1.5
     block_size: 4000
     speak_recognized_text: true
     speak_service: /speak
