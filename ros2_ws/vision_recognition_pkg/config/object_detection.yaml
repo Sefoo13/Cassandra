@@ -6,5 +6,5 @@
     model_path: /ros2_ws/src/ros_cassandra_control/config/yolov5n.engine
     confidence_threshold: 0.35
     iou_threshold: 0.45
-    max_fps: 5.0
+    max_fps: 30.0
     jpeg_quality: 85

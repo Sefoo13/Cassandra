@@ -239,7 +239,7 @@ class ObjectDetector(Node):
         self.declare_parameter("model_path", "")
         self.declare_parameter("confidence_threshold", 0.35)
         self.declare_parameter("iou_threshold", 0.45)
-        self.declare_parameter("max_fps", 5.0)
+        self.declare_parameter("max_fps", 30.0)
         self.declare_parameter("jpeg_quality", 85)
 
         if trt is None or cuda is None:
@@ -266,6 +266,8 @@ class ObjectDetector(Node):
             max(1, int(self.get_parameter("jpeg_quality").value)),
         )
         self._last_processed_at = 0.0
+        self._last_inference_finished_at = 0.0
+        self._processing_fps = 0.0
 
         configured_model = str(self.get_parameter("model_path").value).strip()
         model_path = configured_model or os.path.join(
@@ -312,9 +314,17 @@ class ObjectDetector(Node):
             raw_detections = decode_yolov5_output(output, self._confidence)
             raw_detections = non_maximum_suppression(raw_detections, self._iou)
             detections = self._map_detections(raw_detections, frame.shape)
-            elapsed_ms = (time.monotonic() - started_at) * 1000.0
-            self._publish_detections(message, detections, elapsed_ms)
+            finished_at = time.monotonic()
+            elapsed_ms = (finished_at - started_at) * 1000.0
+            self._update_processing_fps(finished_at)
+            self._publish_detections(
+                message,
+                detections,
+                elapsed_ms,
+                self._processing_fps,
+            )
             self._draw_detections(frame, detections)
+            self._draw_fps(frame, self._processing_fps, elapsed_ms)
             self._publish_annotated_image(message, frame)
         except Exception as error:
             self.get_logger().error(f"Object detection error: {error}")
@@ -360,7 +370,40 @@ class ObjectDetector(Node):
                 1,
             )
 
-    def _publish_detections(self, source_message, detections, elapsed_ms):
+    def _update_processing_fps(self, finished_at):
+        if self._last_inference_finished_at > 0.0:
+            interval = finished_at - self._last_inference_finished_at
+            if interval > 0.0:
+                current_fps = 1.0 / interval
+                if self._processing_fps <= 0.0:
+                    self._processing_fps = current_fps
+                else:
+                    self._processing_fps = (
+                        0.8 * self._processing_fps + 0.2 * current_fps
+                    )
+        self._last_inference_finished_at = finished_at
+
+    @staticmethod
+    def _draw_fps(frame, processing_fps, inference_ms):
+        label = f"FPS: {processing_fps:.1f}  Inference: {inference_ms:.0f} ms"
+        cv2.rectangle(frame, (5, 5), (360, 38), (0, 0, 0), -1)
+        cv2.putText(
+            frame,
+            label,
+            (12, 29),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.65,
+            (0, 255, 0),
+            2,
+        )
+
+    def _publish_detections(
+        self,
+        source_message,
+        detections,
+        elapsed_ms,
+        processing_fps,
+    ):
         output = String()
         output.data = json.dumps(
             {
@@ -370,6 +413,7 @@ class ObjectDetector(Node):
                 },
                 "frame_id": source_message.header.frame_id,
                 "inference_ms": round(elapsed_ms, 1),
+                "processing_fps": round(processing_fps, 2),
                 "count": len(detections),
                 "detections": detections,
             },

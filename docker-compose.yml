@@ -59,6 +59,7 @@ services:
     privileged: true
     runtime: nvidia
     network_mode: host
+    restart: unless-stopped
 
     stdin_open: true
     tty: true
