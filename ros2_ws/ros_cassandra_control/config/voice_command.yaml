@@ -5,6 +5,7 @@
     status_topic: /voice/command_status
     servo_pose_topic: /ros_cassandra/servos/pose
     cmd_vel_topic: /diff_controller/cmd_vel_unstamped
+    follow_enabled_topic: /vision/follow_person_enabled
     servo_commands_enabled: true
     movement_commands_enabled: true
     linear_speed: 0.15

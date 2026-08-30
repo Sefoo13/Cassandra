@@ -7,7 +7,7 @@ import time
 from geometry_msgs.msg import Twist
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String
+from std_msgs.msg import Bool, String
 
 
 class VoiceCommandNode(Node):
@@ -22,6 +22,9 @@ class VoiceCommandNode(Node):
         status_topic = str(self.get_parameter("status_topic").value)
         servo_pose_topic = str(self.get_parameter("servo_pose_topic").value)
         cmd_vel_topic = str(self.get_parameter("cmd_vel_topic").value)
+        follow_enabled_topic = str(
+            self.get_parameter("follow_enabled_topic").value
+        )
         self._servo_enabled = bool(
             self.get_parameter("servo_commands_enabled").value
         )
@@ -52,6 +55,9 @@ class VoiceCommandNode(Node):
             10,
         )
         self._velocity_publisher = self.create_publisher(Twist, cmd_vel_topic, 10)
+        self._follow_publisher = self.create_publisher(
+            Bool, follow_enabled_topic, 10
+        )
         self._subscription = self.create_subscription(
             String,
             transcript_topic,
@@ -73,7 +79,11 @@ class VoiceCommandNode(Node):
         if not text:
             return
 
+        if text == "слідкуй":
+            self._publish_follow_enabled(True)
+            return
         if self._contains_any(text, ("стоп", "стій", "зупинись", "зупинися")):
+            self._publish_follow_enabled(False)
             self._stop_movement("stop")
             return
         if not self._enabled:
@@ -167,6 +177,14 @@ class VoiceCommandNode(Node):
         self._servo_publisher.publish(message)
         self._publish_status(f"executed:servo:{pose}")
         self.get_logger().info(f"Voice servo command: {pose}")
+
+    def _publish_follow_enabled(self, enabled):
+        message = Bool()
+        message.data = enabled
+        self._follow_publisher.publish(message)
+        state = "enabled" if enabled else "disabled"
+        self._publish_status(f"executed:person_following:{state}")
+        self.get_logger().info(f"Person following {state} by voice")
 
     def _start_movement(self, linear_x, angular_z, name):
         command = Twist()

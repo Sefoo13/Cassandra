@@ -259,11 +259,11 @@ The configurable YOLO detector can also be started with:
 ros2 launch vision_recognition_pkg object_detection.launch.py
 ```
 
-It subscribes to the compressed RealSense color stream, runs the existing
-YOLOv5n TensorRT engine, publishes the annotated JPEG stream on
+It subscribes to the raw RealSense color stream, runs the existing YOLOv5n
+TensorRT engine, publishes an annotated raw `sensor_msgs/Image` stream on
 `/vision/objects`, and publishes JSON detection records on
-`/vision/detections`. Confidence, IoU, JPEG quality, and maximum processing FPS
-are configured in `config/object_detection.yaml`. The overlay includes FPS,
+`/vision/detections`. Confidence, IoU, tracking, and maximum processing FPS are
+configured in `config/object_detection.yaml`. The overlay includes FPS,
 inference latency, Jetson load and temperature, object count, tracking IDs,
 centers, directions, and the selected person target. When aligned RealSense
 depth is enabled and available, detections also include `distance_m`. Depth and
@@ -271,12 +271,12 @@ alignment are disabled by default on the Jetson Nano to keep the RealSense
 color stream stable. This backend uses TensorRT and PyCUDA directly and does
 not require PyTorch or Ultralytics.
 
-Person following is enabled by default. The detector keeps the current person
-tracking ID and publishes `head_left`, `head_center`, or `head_right` on
-`/ros_cassandra/servos/pose`. A center dead zone and command interval prevent
-rapid servo oscillation. If the person is lost, the head returns to center
-after two seconds. Set `follow_person_enabled: false` in
-`config/object_detection.yaml` to disable automatic head motion.
+Person following starts disabled. Saying the single word `слідкуй` enables it;
+`зупинись` disables it and also stops wheel movement. The detector keeps the
+current person tracking ID and publishes smoothly filtered yaw positions for
+servo 10 on `/ros_cassandra/servos/raw_commands`. A center dead zone, minimum
+step, and command interval prevent rapid oscillation. If the person is lost,
+the head returns to center after two seconds.
 
 On the Jetson Nano/L4T R32, run this node in the `dusty` container, whose base
 image provides the matching L4T TensorRT runtime. Both containers use host ROS

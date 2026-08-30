@@ -8,8 +8,9 @@ def generate_launch_description():
         "device_type": "D435",
         "enable_depth": True,
         "enable_color": True,
-        "enable_sync": False,
-        "align_depth.enable": False,
+        # Keep depth pixels registered to the color image used by the detector.
+        "enable_sync": True,
+        "align_depth.enable": True,
         "depth_module.emitter_enabled": 1,
         "depth_module.profile": "640x480x15",
         "rgb_camera.profile": "640x480x15",

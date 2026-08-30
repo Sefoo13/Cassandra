@@ -1,19 +1,25 @@
 /object_detector:
   ros__parameters:
-    input_topic: /camera/realsense2_camera/color/image_raw/compressed
-    depth_topic: ""
+    input_topic: /camera/realsense2_camera/color/image_raw
+    depth_topic: /camera/realsense2_camera/aligned_depth_to_color/image_raw
     annotated_topic: /vision/objects
     detections_topic: /vision/detections
     model_path: /ros2_ws/src/ros_cassandra_control/config/yolov5n.engine
     confidence_threshold: 0.35
     iou_threshold: 0.45
     max_fps: 30.0
-    jpeg_quality: 85
     tracking_iou_threshold: 0.3
     tracking_max_age_seconds: 1.0
-    follow_person_enabled: true
-    servo_pose_topic: /ros_cassandra/servos/pose
+    follow_person_enabled: false
+    follow_enabled_topic: /vision/follow_person_enabled
+    servo_raw_command_topic: /ros_cassandra/servos/raw_commands
+    head_yaw_servo_id: 10
+    head_yaw_center_raw: 460
+    head_yaw_left_raw: 300
+    head_yaw_right_raw: 700
     follow_min_confidence: 0.5
     follow_dead_zone_ratio: 0.15
-    follow_command_interval_seconds: 0.75
+    follow_smoothing_factor: 0.25
+    follow_min_raw_step: 8
+    follow_command_interval_seconds: 0.15
     follow_lost_timeout_seconds: 2.0

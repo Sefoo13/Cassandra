@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Detect objects in compressed camera frames with TensorRT YOLOv5."""
+"""Detect objects in raw camera frames with TensorRT YOLOv5."""
 
 import json
 import glob
@@ -13,8 +13,8 @@ import rclpy
 from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
-from sensor_msgs.msg import CompressedImage, Image
-from std_msgs.msg import String
+from sensor_msgs.msg import Image
+from std_msgs.msg import Bool, Int32MultiArray, String
 
 try:
     import pycuda.driver as cuda
@@ -233,7 +233,7 @@ class ObjectDetector(Node):
         super().__init__("object_detector")
         self.declare_parameter(
             "input_topic",
-            "/camera/realsense2_camera/color/image_raw/compressed",
+            "/camera/realsense2_camera/color/image_raw",
         )
         self.declare_parameter(
             "depth_topic",
@@ -245,16 +245,24 @@ class ObjectDetector(Node):
         self.declare_parameter("confidence_threshold", 0.35)
         self.declare_parameter("iou_threshold", 0.45)
         self.declare_parameter("max_fps", 30.0)
-        self.declare_parameter("jpeg_quality", 85)
         self.declare_parameter("tracking_iou_threshold", 0.3)
         self.declare_parameter("tracking_max_age_seconds", 1.0)
-        self.declare_parameter("follow_person_enabled", True)
+        self.declare_parameter("follow_person_enabled", False)
         self.declare_parameter(
-            "servo_pose_topic", "/ros_cassandra/servos/pose"
+            "follow_enabled_topic", "/vision/follow_person_enabled"
         )
+        self.declare_parameter(
+            "servo_raw_command_topic", "/ros_cassandra/servos/raw_commands"
+        )
+        self.declare_parameter("head_yaw_servo_id", 10)
+        self.declare_parameter("head_yaw_center_raw", 460)
+        self.declare_parameter("head_yaw_left_raw", 300)
+        self.declare_parameter("head_yaw_right_raw", 700)
         self.declare_parameter("follow_min_confidence", 0.5)
         self.declare_parameter("follow_dead_zone_ratio", 0.15)
-        self.declare_parameter("follow_command_interval_seconds", 0.75)
+        self.declare_parameter("follow_smoothing_factor", 0.25)
+        self.declare_parameter("follow_min_raw_step", 8)
+        self.declare_parameter("follow_command_interval_seconds", 0.15)
         self.declare_parameter("follow_lost_timeout_seconds", 2.0)
 
         if trt is None or cuda is None:
@@ -267,7 +275,12 @@ class ObjectDetector(Node):
         depth_topic = str(self.get_parameter("depth_topic").value)
         annotated_topic = str(self.get_parameter("annotated_topic").value)
         detections_topic = str(self.get_parameter("detections_topic").value)
-        servo_pose_topic = str(self.get_parameter("servo_pose_topic").value)
+        follow_enabled_topic = str(
+            self.get_parameter("follow_enabled_topic").value
+        )
+        servo_raw_command_topic = str(
+            self.get_parameter("servo_raw_command_topic").value
+        )
         self._confidence = min(
             1.0,
             max(0.0, float(self.get_parameter("confidence_threshold").value)),
@@ -278,10 +291,6 @@ class ObjectDetector(Node):
         )
         max_fps = max(0.1, float(self.get_parameter("max_fps").value))
         self._minimum_frame_interval = 1.0 / max_fps
-        self._jpeg_quality = min(
-            100,
-            max(1, int(self.get_parameter("jpeg_quality").value)),
-        )
         self._tracking_iou = min(
             1.0,
             max(
@@ -310,6 +319,28 @@ class ObjectDetector(Node):
                 float(self.get_parameter("follow_dead_zone_ratio").value),
             ),
         )
+        self._follow_smoothing_factor = min(
+            1.0,
+            max(
+                0.01,
+                float(self.get_parameter("follow_smoothing_factor").value),
+            ),
+        )
+        self._follow_min_raw_step = max(
+            1, int(self.get_parameter("follow_min_raw_step").value)
+        )
+        self._head_yaw_servo_id = int(
+            self.get_parameter("head_yaw_servo_id").value
+        )
+        self._head_yaw_center_raw = int(
+            self.get_parameter("head_yaw_center_raw").value
+        )
+        self._head_yaw_left_raw = int(
+            self.get_parameter("head_yaw_left_raw").value
+        )
+        self._head_yaw_right_raw = int(
+            self.get_parameter("head_yaw_right_raw").value
+        )
         self._follow_command_interval = max(
             0.1,
             float(
@@ -337,7 +368,8 @@ class ObjectDetector(Node):
         self._followed_track_id = None
         self._last_person_seen_at = 0.0
         self._last_head_command_at = 0.0
-        self._last_head_pose = None
+        self._last_head_raw = None
+        self._smoothed_head_raw = float(self._head_yaw_center_raw)
         self._follow_status = "waiting"
 
         configured_model = str(self.get_parameter("model_path").value).strip()
@@ -350,16 +382,22 @@ class ObjectDetector(Node):
             raise RuntimeError(f"TensorRT engine was not found at {model_path!r}")
 
         self._annotated_publisher = self.create_publisher(
-            CompressedImage, annotated_topic, qos_profile_sensor_data
+            Image, annotated_topic, qos_profile_sensor_data
         )
         self._detections_publisher = self.create_publisher(
             String, detections_topic, 10
         )
-        self._servo_pose_publisher = self.create_publisher(
-            String, servo_pose_topic, 10
+        self._servo_raw_publisher = self.create_publisher(
+            Int32MultiArray, servo_raw_command_topic, 10
+        )
+        self._follow_enabled_subscription = self.create_subscription(
+            Bool,
+            follow_enabled_topic,
+            self._on_follow_enabled,
+            10,
         )
         self._subscription = self.create_subscription(
-            CompressedImage,
+            Image,
             input_topic,
             self._image_callback,
             qos_profile_sensor_data,
@@ -387,12 +425,7 @@ class ObjectDetector(Node):
         self._last_processed_at = now
         started_at = time.monotonic()
         try:
-            frame = cv2.imdecode(
-                np.frombuffer(message.data, dtype=np.uint8),
-                cv2.IMREAD_COLOR,
-            )
-            if frame is None:
-                raise ValueError("OpenCV could not decode the compressed frame")
+            frame = self._raw_image_to_bgr(message)
             output = self._model.infer(frame)
             raw_detections = decode_yolov5_output(output, self._confidence)
             raw_detections = non_maximum_suppression(raw_detections, self._iou)
@@ -420,6 +453,33 @@ class ObjectDetector(Node):
             self._publish_annotated_image(message, frame)
         except Exception as error:
             self.get_logger().error(f"Object detection error: {error}")
+
+    @staticmethod
+    def _raw_image_to_bgr(message):
+        channels_by_encoding = {
+            "bgr8": 3,
+            "rgb8": 3,
+            "bgra8": 4,
+            "rgba8": 4,
+        }
+        channels = channels_by_encoding.get(message.encoding)
+        if channels is None:
+            raise ValueError(
+                f"Unsupported color image encoding: {message.encoding}"
+            )
+        row = np.frombuffer(message.data, dtype=np.uint8).reshape(
+            message.height, message.step
+        )
+        image = row[:, : message.width * channels].reshape(
+            message.height, message.width, channels
+        )
+        if message.encoding == "rgb8":
+            return cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        if message.encoding == "rgba8":
+            return cv2.cvtColor(image, cv2.COLOR_RGBA2BGR)
+        if message.encoding == "bgra8":
+            return cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
+        return np.ascontiguousarray(image)
 
     def _depth_callback(self, message):
         now = time.monotonic()
@@ -601,7 +661,7 @@ class ObjectDetector(Node):
                 self._followed_track_id is not None
                 and now - self._last_person_seen_at >= self._follow_lost_timeout
             ):
-                self._publish_head_pose("head_center", now)
+                self._publish_head_raw(self._head_yaw_center_raw, now, force=True)
                 self._followed_track_id = None
                 self._follow_status = "lost - centering"
             elif self._followed_track_id is None:
@@ -616,30 +676,67 @@ class ObjectDetector(Node):
         left_boundary = 0.5 - self._follow_dead_zone
         right_boundary = 0.5 + self._follow_dead_zone
         if center_ratio < left_boundary:
-            pose = "head_right"
             direction = "left"
+            amount = (left_boundary - center_ratio) / max(left_boundary, 1e-6)
+            raw_target = self._head_yaw_center_raw + amount * (
+                self._head_yaw_right_raw - self._head_yaw_center_raw
+            )
         elif center_ratio > right_boundary:
-            pose = "head_left"
             direction = "right"
+            amount = (center_ratio - right_boundary) / max(
+                1.0 - right_boundary, 1e-6
+            )
+            raw_target = self._head_yaw_center_raw + amount * (
+                self._head_yaw_left_raw - self._head_yaw_center_raw
+            )
         else:
-            pose = "head_center"
             direction = "center"
+            raw_target = float(self._head_yaw_center_raw)
+        self._smoothed_head_raw += self._follow_smoothing_factor * (
+            raw_target - self._smoothed_head_raw
+        )
         self._follow_status = (
             f"person #{self._followed_track_id} {direction}"
         )
-        self._publish_head_pose(pose, now)
+        self._publish_head_raw(round(self._smoothed_head_raw), now)
 
-    def _publish_head_pose(self, pose, now):
-        if pose == self._last_head_pose:
+    def _publish_head_raw(self, raw_position, now, force=False):
+        raw_position = max(
+            min(self._head_yaw_left_raw, self._head_yaw_right_raw),
+            min(
+                max(self._head_yaw_left_raw, self._head_yaw_right_raw),
+                int(raw_position),
+            ),
+        )
+        if (
+            not force
+            and self._last_head_raw is not None
+            and abs(raw_position - self._last_head_raw) < self._follow_min_raw_step
+        ):
             return
         if now - self._last_head_command_at < self._follow_command_interval:
             return
-        message = String()
-        message.data = pose
-        self._servo_pose_publisher.publish(message)
-        self._last_head_pose = pose
+        message = Int32MultiArray()
+        message.data = [self._head_yaw_servo_id, raw_position]
+        self._servo_raw_publisher.publish(message)
+        self._last_head_raw = raw_position
         self._last_head_command_at = now
-        self.get_logger().info(f"Person following head pose: {pose}")
+        self.get_logger().info(f"Person following head yaw raw: {raw_position}")
+
+    def _on_follow_enabled(self, message):
+        self._follow_person_enabled = bool(message.data)
+        if self._follow_person_enabled:
+            self._follow_status = "waiting"
+            self.get_logger().info("Person following enabled")
+            return
+        self._followed_track_id = None
+        self._follow_status = "disabled"
+        self._publish_head_raw(
+            self._head_yaw_center_raw,
+            time.monotonic(),
+            force=True,
+        )
+        self.get_logger().info("Person following disabled")
 
     @staticmethod
     def _draw_detections(frame, detections):
@@ -841,7 +938,7 @@ class ObjectDetector(Node):
                     "enabled": self._follow_person_enabled,
                     "track_id": self._followed_track_id,
                     "status": self._follow_status,
-                    "head_pose": self._last_head_pose,
+                    "head_yaw_raw": self._last_head_raw,
                 },
                 "count": len(detections),
                 "detections": detections,
@@ -851,15 +948,14 @@ class ObjectDetector(Node):
         self._detections_publisher.publish(output)
 
     def _publish_annotated_image(self, source_message, frame):
-        success, encoded = cv2.imencode(
-            ".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality]
-        )
-        if not success:
-            raise RuntimeError("OpenCV could not encode the annotated frame")
-        output = CompressedImage()
+        output = Image()
         output.header = source_message.header
-        output.format = "jpeg"
-        output.data = encoded.tobytes()
+        output.height = frame.shape[0]
+        output.width = frame.shape[1]
+        output.encoding = "bgr8"
+        output.is_bigendian = False
+        output.step = frame.shape[1] * 3
+        output.data = np.ascontiguousarray(frame).tobytes()
         self._annotated_publisher.publish(output)
 
 
