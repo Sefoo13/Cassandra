@@ -8,6 +8,8 @@ def generate_launch_description():
         "device_type": "D435",
         "enable_depth": True,
         "enable_color": True,
+        "enable_sync": True,
+        "align_depth.enable": True,
         "depth_module.profile": "640x480x30",
         "rgb_camera.profile": "640x480x30",
         "depth_fps": 30,

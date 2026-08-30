@@ -263,8 +263,11 @@ It subscribes to the compressed RealSense color stream, runs the existing
 YOLOv5n TensorRT engine, publishes the annotated JPEG stream on
 `/vision/objects`, and publishes JSON detection records on
 `/vision/detections`. Confidence, IoU, JPEG quality, and maximum processing FPS
-are configured in `config/object_detection.yaml`. This backend uses TensorRT
-and PyCUDA directly and does not require PyTorch or Ultralytics.
+are configured in `config/object_detection.yaml`. The overlay includes FPS,
+inference latency, Jetson load and temperature, object count, tracking IDs,
+centers, directions, and the selected person target. When aligned RealSense
+depth is available, detections also include `distance_m`. This backend uses
+TensorRT and PyCUDA directly and does not require PyTorch or Ultralytics.
 
 On the Jetson Nano/L4T R32, run this node in the `dusty` container, whose base
 image provides the matching L4T TensorRT runtime. Both containers use host ROS
