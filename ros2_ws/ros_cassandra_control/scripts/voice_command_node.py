@@ -79,7 +79,7 @@ class VoiceCommandNode(Node):
         if not text:
             return
 
-        if text in ("слідкуй", "слідкує"):
+        if self._contains_any(text, ("слідкуй", "слідкує")):
             self._publish_follow_enabled(True)
             return
         if self._contains_any(text, ("стоп", "стій", "зупинись", "зупинися")):

@@ -266,7 +266,7 @@ TensorRT engine, publishes an annotated raw `sensor_msgs/Image` stream on
 configured in `config/object_detection.yaml`. The overlay includes FPS,
 inference latency, Jetson load and temperature, object count, tracking IDs,
 centers, directions, and the selected person target. When aligned RealSense
-depth is enabled and available, detections also include `distance_m`. Depth and
+depth is enabled and available, detections also include ``. Depth and
 alignment are disabled by default on the Jetson Nano to keep the RealSense
 color stream stable. This backend uses TensorRT and PyCUDA directly and does
 not require PyTorch or Ultralytics.

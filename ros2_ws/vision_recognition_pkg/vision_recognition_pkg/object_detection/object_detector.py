@@ -573,7 +573,7 @@ class ObjectDetector(Node):
                 "y": round(center_y, 1),
             }
             detection["direction"] = direction
-            detection["distance_m"] = self._measure_distance(
+            detection[""] = self._measure_distance(
                 center_x,
                 center_y,
                 box,
@@ -728,7 +728,7 @@ class ObjectDetector(Node):
             second = (int(box["x2"]), int(box["y2"]))
             color = (0, 255, 0)
             thickness = 2
-            distance = detection["distance_m"]
+            distance = detection[""]
             distance_label = "" if distance is None else f" {distance:.2f}m"
             cv2.rectangle(frame, first, second, color, thickness)
             cv2.putText(

@@ -1,7 +1,7 @@
 /object_detector:
   ros__parameters:
     input_topic: /camera/realsense2_camera/color/image_raw/compressed
-    depth_topic: ""
+    depth_topic: /camera/realsense2_camera/depth/image_rect_raw
     annotated_topic: /vision/objects
     detections_topic: /vision/detections
     model_path: /ros2_ws/src/ros_cassandra_control/config/yolov5n.engine

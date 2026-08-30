@@ -406,7 +406,18 @@ class SpeechRecognitionNode(Node):
                 self._speak(self._command_exit_acknowledgement)
             return True
 
-        if normalized in self._always_active_commands:
+        always_active_command = next(
+            (
+                command
+                for command in self._always_active_commands
+                if re.search(
+                    rf"(?<!\w){re.escape(command)}(?!\w)",
+                    normalized,
+                )
+            ),
+            None,
+        )
+        if always_active_command is not None:
             self._publish_command(normalized)
             if not self._command_mode_persistent:
                 self._command_mode_until = 0.0
