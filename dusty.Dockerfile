@@ -54,6 +54,7 @@ RUN rosdep install --from-paths src --ignore-src -r -y || echo "Ignoring missing
 RUN rm -rf build install log
 
 COPY ./ros2_ws/ros_cassandra_control ./src/ros_cassandra_control
+COPY ./ros2_ws/vision_recognition_pkg ./src/vision_recognition_pkg
 #COPY ./ros2_ws/diffdrive_cassandra ros2_ws/src/diffdrive_cassandra
 COPY ./ros2_ws/ros_cassandra_description ./src/ros_cassandra_description
 

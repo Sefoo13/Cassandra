@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Detect objects in compressed camera frames with Ultralytics YOLO."""
+"""Detect objects in compressed camera frames with TensorRT YOLOv5."""
 
 import json
 import os
+import threading
 import time
 
 import cv2
@@ -15,16 +16,217 @@ from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import String
 
 try:
-    from ultralytics import YOLO
+    import pycuda.driver as cuda
+    import tensorrt as trt
 except ImportError as error:
-    YOLO = None
-    YOLO_IMPORT_ERROR = error
+    cuda = None
+    trt = None
+    TENSORRT_IMPORT_ERROR = error
 else:
-    YOLO_IMPORT_ERROR = None
+    TENSORRT_IMPORT_ERROR = None
+
+
+COCO_CLASSES = [
+    "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train",
+    "truck", "boat", "traffic light", "fire hydrant", "stop sign",
+    "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep",
+    "cow", "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella",
+    "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard",
+    "sports ball", "kite", "baseball bat", "baseball glove", "skateboard",
+    "surfboard", "tennis racket", "bottle", "wine glass", "cup", "fork",
+    "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange",
+    "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair",
+    "couch", "potted plant", "bed", "dining table", "toilet", "tv",
+    "laptop", "mouse", "remote", "keyboard", "cell phone", "microwave",
+    "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase",
+    "scissors", "teddy bear", "hair drier", "toothbrush",
+]
+
+
+def class_name(class_id):
+    """Return a COCO label for a numeric class identifier."""
+    class_id = int(class_id)
+    if 0 <= class_id < len(COCO_CLASSES):
+        return COCO_CLASSES[class_id]
+    return str(class_id)
+
+
+def intersection_over_union(first, second):
+    """Calculate IoU for two xyxy boxes."""
+    x1 = max(first[0], second[0])
+    y1 = max(first[1], second[1])
+    x2 = min(first[2], second[2])
+    y2 = min(first[3], second[3])
+    intersection = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+    first_area = max(0.0, first[2] - first[0]) * max(
+        0.0, first[3] - first[1]
+    )
+    second_area = max(0.0, second[2] - second[0]) * max(
+        0.0, second[3] - second[1]
+    )
+    return intersection / (first_area + second_area - intersection + 1e-6)
+
+
+def non_maximum_suppression(detections, iou_threshold):
+    """Suppress overlapping detections, independently for every class."""
+    remaining = sorted(detections, key=lambda item: item[4], reverse=True)
+    selected = []
+    while remaining:
+        best = remaining.pop(0)
+        selected.append(best)
+        remaining = [
+            candidate
+            for candidate in remaining
+            if int(candidate[5]) != int(best[5])
+            or intersection_over_union(best, candidate) < iou_threshold
+        ]
+    return selected
+
+
+def decode_yolov5_output(output, confidence_threshold):
+    """Decode raw or postprocessed YOLOv5 TensorRT output."""
+    predictions = np.squeeze(np.asarray(output))
+    if predictions.ndim != 2 or predictions.shape[1] < 6:
+        return []
+
+    if predictions.shape[1] < 85:
+        rows = predictions[predictions[:, 4] >= confidence_threshold]
+        return [
+            [row[0], row[1], row[2], row[3], row[4], int(row[5])]
+            for row in rows
+        ]
+
+    objectness = predictions[:, 4]
+    class_scores = predictions[:, 5:]
+    class_ids = np.argmax(class_scores, axis=1)
+    scores = objectness * class_scores[np.arange(class_scores.shape[0]), class_ids]
+    keep = scores >= confidence_threshold
+    if not np.any(keep):
+        return []
+
+    boxes = predictions[keep, :4]
+    scores = scores[keep]
+    class_ids = class_ids[keep]
+    x, y, width, height = (
+        boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]
+    )
+    return np.stack(
+        [
+            x - width / 2,
+            y - height / 2,
+            x + width / 2,
+            y + height / 2,
+            scores,
+            class_ids,
+        ],
+        axis=1,
+    ).tolist()
+
+
+class TensorRTModel:
+    """Own a TensorRT engine, CUDA context, and its reusable buffers."""
+
+    def __init__(self, engine_path):
+        cuda.init()
+        self._lock = threading.Lock()
+        self._cuda_context = cuda.Device(0).make_context()
+        try:
+            self._logger = trt.Logger(trt.Logger.WARNING)
+            self._runtime = trt.Runtime(self._logger)
+            with open(engine_path, "rb") as engine_file:
+                self._engine = self._runtime.deserialize_cuda_engine(
+                    engine_file.read()
+                )
+            if self._engine is None:
+                raise RuntimeError(
+                    "TensorRT could not deserialize the engine. Rebuild it on "
+                    "this Jetson if its TensorRT version is different."
+                )
+            self._execution_context = self._engine.create_execution_context()
+            self._bindings = []
+            self._allocate_buffers()
+        finally:
+            self._cuda_context.pop()
+
+    def _allocate_buffers(self):
+        output_count = 0
+        for binding in self._engine:
+            shape = tuple(self._engine.get_binding_shape(binding))
+            if any(dimension < 0 for dimension in shape):
+                raise RuntimeError(
+                    f"Dynamic TensorRT binding {binding!r} is not supported"
+                )
+            size = trt.volume(shape)
+            dtype = trt.nptype(self._engine.get_binding_dtype(binding))
+            host_memory = cuda.pagelocked_empty(size, dtype)
+            device_memory = cuda.mem_alloc(host_memory.nbytes)
+            self._bindings.append(int(device_memory))
+            if self._engine.binding_is_input(binding):
+                self._input_host = host_memory
+                self._input_device = device_memory
+                self.input_shape = shape
+            else:
+                output_count += 1
+                self._output_host = host_memory
+                self._output_device = device_memory
+                self._output_shape = shape
+        if output_count != 1:
+            raise RuntimeError(
+                f"Expected one TensorRT output binding, found {output_count}"
+            )
+
+    def _preprocess(self, frame):
+        _, _, input_height, input_width = self.input_shape
+        frame_height, frame_width = frame.shape[:2]
+        self.ratio = min(
+            input_width / frame_width,
+            input_height / frame_height,
+        )
+        resized_width = int(round(frame_width * self.ratio))
+        resized_height = int(round(frame_height * self.ratio))
+        horizontal_padding = (input_width - resized_width) / 2.0
+        vertical_padding = (input_height - resized_height) / 2.0
+        left = int(round(horizontal_padding - 0.1))
+        right = int(round(horizontal_padding + 0.1))
+        top = int(round(vertical_padding - 0.1))
+        bottom = int(round(vertical_padding + 0.1))
+        resized = cv2.resize(
+            frame,
+            (resized_width, resized_height),
+            interpolation=cv2.INTER_LINEAR,
+        )
+        padded = cv2.copyMakeBorder(
+            resized,
+            top,
+            bottom,
+            left,
+            right,
+            cv2.BORDER_CONSTANT,
+            value=(114, 114, 114),
+        )
+        self.padding = (left, top)
+        image = cv2.cvtColor(padded, cv2.COLOR_BGR2RGB)
+        image = image.astype(np.float32) / 255.0
+        image = np.transpose(image, (2, 0, 1))
+        return np.ascontiguousarray(image).ravel()
+
+    def infer(self, frame):
+        """Run synchronous inference under the CUDA context that owns buffers."""
+        with self._lock:
+            self._cuda_context.push()
+            try:
+                np.copyto(self._input_host, self._preprocess(frame))
+                cuda.memcpy_htod(self._input_device, self._input_host)
+                if not self._execution_context.execute_v2(self._bindings):
+                    raise RuntimeError("TensorRT execute_v2 returned false")
+                cuda.memcpy_dtoh(self._output_host, self._output_device)
+                return self._output_host.reshape(self._output_shape).copy()
+            finally:
+                self._cuda_context.pop()
 
 
 class ObjectDetector(Node):
-    """Run YOLO on camera frames and publish images plus structured results."""
+    """Run TensorRT YOLOv5 and publish annotated and structured detections."""
 
     def __init__(self):
         super().__init__("object_detector")
@@ -38,14 +240,12 @@ class ObjectDetector(Node):
         self.declare_parameter("confidence_threshold", 0.35)
         self.declare_parameter("iou_threshold", 0.45)
         self.declare_parameter("max_fps", 5.0)
-        self.declare_parameter("image_size", 640)
-        self.declare_parameter("device", "auto")
         self.declare_parameter("jpeg_quality", 85)
 
-        if YOLO is None:
+        if trt is None or cuda is None:
             raise RuntimeError(
-                "Ultralytics is unavailable. Install a Jetson-compatible "
-                f"PyTorch build and 'ultralytics': {YOLO_IMPORT_ERROR}"
+                "TensorRT backend is unavailable. The Jetson container must "
+                f"provide 'tensorrt' and 'pycuda': {TENSORRT_IMPORT_ERROR}"
             )
 
         input_topic = str(self.get_parameter("input_topic").value)
@@ -61,8 +261,6 @@ class ObjectDetector(Node):
         )
         max_fps = max(0.1, float(self.get_parameter("max_fps").value))
         self._minimum_frame_interval = 1.0 / max_fps
-        self._image_size = max(32, int(self.get_parameter("image_size").value))
-        self._device = str(self.get_parameter("device").value).strip().lower()
         self._jpeg_quality = min(
             100,
             max(1, int(self.get_parameter("jpeg_quality").value)),
@@ -71,22 +269,18 @@ class ObjectDetector(Node):
 
         configured_model = str(self.get_parameter("model_path").value).strip()
         model_path = configured_model or os.path.join(
-            get_package_share_directory("vision_recognition_pkg"),
-            "models",
-            "yolov8n.pt",
+            get_package_share_directory("ros_cassandra_control"),
+            "config",
+            "yolov5n.engine",
         )
         if not os.path.isfile(model_path):
-            raise RuntimeError(f"YOLO model was not found at {model_path!r}")
+            raise RuntimeError(f"TensorRT engine was not found at {model_path!r}")
 
         self._annotated_publisher = self.create_publisher(
-            CompressedImage,
-            annotated_topic,
-            qos_profile_sensor_data,
+            CompressedImage, annotated_topic, qos_profile_sensor_data
         )
         self._detections_publisher = self.create_publisher(
-            String,
-            detections_topic,
-            10,
+            String, detections_topic, 10
         )
         self._subscription = self.create_subscription(
             CompressedImage,
@@ -94,12 +288,11 @@ class ObjectDetector(Node):
             self._image_callback,
             qos_profile_sensor_data,
         )
-
-        self.get_logger().info(f"Loading YOLO model: {model_path}")
-        self._model = YOLO(model_path)
+        self.get_logger().info(f"Loading TensorRT engine: {model_path}")
+        self._model = TensorRTModel(model_path)
         self.get_logger().info(
             f"Object detector ready: input={input_topic}, max_fps={max_fps:g}, "
-            f"confidence={self._confidence:g}, device={self._device}"
+            f"confidence={self._confidence:g}, backend=TensorRT"
         )
 
     def _image_callback(self, message):
@@ -108,65 +301,64 @@ class ObjectDetector(Node):
             return
         self._last_processed_at = now
         started_at = time.monotonic()
-
         try:
-            encoded = np.frombuffer(message.data, dtype=np.uint8)
-            frame = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+            frame = cv2.imdecode(
+                np.frombuffer(message.data, dtype=np.uint8),
+                cv2.IMREAD_COLOR,
+            )
             if frame is None:
                 raise ValueError("OpenCV could not decode the compressed frame")
-
-            predict_options = {
-                "source": frame,
-                "conf": self._confidence,
-                "iou": self._iou,
-                "imgsz": self._image_size,
-                "verbose": False,
-            }
-            if self._device != "auto":
-                predict_options["device"] = self._device
-            result = self._model.predict(**predict_options)[0]
-
-            detections = self._serialize_detections(result)
+            output = self._model.infer(frame)
+            raw_detections = decode_yolov5_output(output, self._confidence)
+            raw_detections = non_maximum_suppression(raw_detections, self._iou)
+            detections = self._map_detections(raw_detections, frame.shape)
             elapsed_ms = (time.monotonic() - started_at) * 1000.0
             self._publish_detections(message, detections, elapsed_ms)
-            self._publish_annotated_image(message, result.plot())
+            self._draw_detections(frame, detections)
+            self._publish_annotated_image(message, frame)
         except Exception as error:
             self.get_logger().error(f"Object detection error: {error}")
 
-    @staticmethod
-    def _serialize_detections(result):
-        detections = []
-        names = result.names
-        if result.boxes is None:
-            return detections
-
-        coordinates = result.boxes.xyxy.detach().cpu().tolist()
-        confidences = result.boxes.conf.detach().cpu().tolist()
-        classes = result.boxes.cls.detach().cpu().tolist()
-        for xyxy, confidence, class_value in zip(
-            coordinates,
-            confidences,
-            classes,
-        ):
-            class_id = int(class_value)
-            if isinstance(names, dict):
-                label = str(names.get(class_id, class_id))
-            else:
-                label = str(names[class_id])
-            detections.append(
+    def _map_detections(self, raw_detections, frame_shape):
+        frame_height, frame_width = frame_shape[:2]
+        padding_x, padding_y = self._model.padding
+        mapped = []
+        for x1, y1, x2, y2, score, class_id in raw_detections:
+            x1 = max(0.0, min(frame_width - 1, (x1 - padding_x) / self._model.ratio))
+            y1 = max(0.0, min(frame_height - 1, (y1 - padding_y) / self._model.ratio))
+            x2 = max(0.0, min(frame_width - 1, (x2 - padding_x) / self._model.ratio))
+            y2 = max(0.0, min(frame_height - 1, (y2 - padding_y) / self._model.ratio))
+            mapped.append(
                 {
-                    "class_id": class_id,
-                    "label": label,
-                    "confidence": round(float(confidence), 4),
+                    "class_id": int(class_id),
+                    "label": class_name(class_id),
+                    "confidence": round(float(score), 4),
                     "bbox": {
-                        "x1": round(float(xyxy[0]), 1),
-                        "y1": round(float(xyxy[1]), 1),
-                        "x2": round(float(xyxy[2]), 1),
-                        "y2": round(float(xyxy[3]), 1),
+                        "x1": round(float(x1), 1),
+                        "y1": round(float(y1), 1),
+                        "x2": round(float(x2), 1),
+                        "y2": round(float(y2), 1),
                     },
                 }
             )
-        return detections
+        return mapped
+
+    @staticmethod
+    def _draw_detections(frame, detections):
+        for detection in detections:
+            box = detection["bbox"]
+            first = (int(box["x1"]), int(box["y1"]))
+            second = (int(box["x2"]), int(box["y2"]))
+            cv2.rectangle(frame, first, second, (0, 255, 0), 2)
+            cv2.putText(
+                frame,
+                f"{detection['label']}: {detection['confidence']:.2f}",
+                (first[0], max(0, first[1] - 5)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 0),
+                1,
+            )
 
     def _publish_detections(self, source_message, detections, elapsed_ms):
         output = String()
@@ -187,13 +379,10 @@ class ObjectDetector(Node):
 
     def _publish_annotated_image(self, source_message, frame):
         success, encoded = cv2.imencode(
-            ".jpg",
-            frame,
-            [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality],
+            ".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality]
         )
         if not success:
             raise RuntimeError("OpenCV could not encode the annotated frame")
-
         output = CompressedImage()
         output.header = source_message.header
         output.format = "jpeg"

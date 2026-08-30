@@ -57,7 +57,11 @@ services:
       context: .
       dockerfile: dusty.Dockerfile
     privileged: true
+    runtime: nvidia
     network_mode: host
 
     stdin_open: true
     tty: true
+    volumes:
+      - ./ros2_ws/vision_recognition_pkg:/ros2_ws/src/vision_recognition_pkg
+      - ./ros2_ws/ros_cassandra_control:/ros2_ws/src/ros_cassandra_control

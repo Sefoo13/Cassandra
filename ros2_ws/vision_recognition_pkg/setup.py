@@ -27,7 +27,6 @@ setup(
             "share/" + package_name + "/models",
             [
                 "models/haarcascade_frontalface_default.xml",
-                "models/yolov8n.pt",
             ],
         ),
     ],
