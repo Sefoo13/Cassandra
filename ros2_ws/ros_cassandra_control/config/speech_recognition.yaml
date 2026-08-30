@@ -29,4 +29,4 @@
     command_exit_words: ["вихід", "вийти", "завершити режим команд"]
     command_exit_acknowledgement: "Режим команд вимкнено"
     command_window_seconds: 15.0
-    always_active_commands: ["слідкуй", "стоп", "стій", "зупинись", "зупинися"]
+    always_active_commands: ["слідкуй", "слідкує", "стоп", "стій", "зупинись", "зупинися"]
