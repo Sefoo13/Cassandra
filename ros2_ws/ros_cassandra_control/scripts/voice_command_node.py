@@ -25,6 +25,9 @@ class VoiceCommandNode(Node):
         follow_enabled_topic = str(
             self.get_parameter("follow_enabled_topic").value
         )
+        follow_wheels_enabled_topic = str(
+            self.get_parameter("follow_wheels_enabled_topic").value
+        )
         self._servo_enabled = bool(
             self.get_parameter("servo_commands_enabled").value
         )
@@ -58,6 +61,9 @@ class VoiceCommandNode(Node):
         self._follow_publisher = self.create_publisher(
             Bool, follow_enabled_topic, 10
         )
+        self._follow_wheels_publisher = self.create_publisher(
+            Bool, follow_wheels_enabled_topic, 10
+        )
         self._subscription = self.create_subscription(
             String,
             transcript_topic,
@@ -79,12 +85,33 @@ class VoiceCommandNode(Node):
         if not text:
             return
 
-        if self._contains_any(text, ("слідкуй", "слідкує")):
-            self._publish_follow_enabled(True)
-            return
         if self._contains_any(text, ("стоп", "стій", "зупинись", "зупинися")):
             self._publish_follow_enabled(False)
+            self._publish_wheel_follow_enabled(False)
             self._stop_movement("stop")
+            return
+        if self._contains_any(
+            text,
+            (
+                "слідкуй колесами",
+                "стеж колесами",
+                "їдь за мною",
+                "переслідуй",
+            ),
+        ):
+            self._publish_follow_enabled(False)
+            self._publish_wheel_follow_enabled(True)
+            return
+        if self._contains_any(
+            text,
+            ("слідкуй головою", "стеж головою"),
+        ):
+            self._publish_wheel_follow_enabled(False)
+            self._publish_follow_enabled(True)
+            return
+        if self._contains_any(text, ("слідкуй", "слідкує", "стеж")):
+            self._publish_wheel_follow_enabled(False)
+            self._publish_follow_enabled(True)
             return
         if not self._enabled:
             return
@@ -185,6 +212,14 @@ class VoiceCommandNode(Node):
         state = "enabled" if enabled else "disabled"
         self._publish_status(f"executed:person_following:{state}")
         self.get_logger().info(f"Person following {state} by voice")
+
+    def _publish_wheel_follow_enabled(self, enabled):
+        message = Bool()
+        message.data = enabled
+        self._follow_wheels_publisher.publish(message)
+        state = "enabled" if enabled else "disabled"
+        self._publish_status(f"executed:wheel_person_following:{state}")
+        self.get_logger().info(f"Wheel person following {state} by voice")
 
     def _start_movement(self, linear_x, angular_z, name):
         command = Twist()

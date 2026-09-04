@@ -22,7 +22,13 @@ setup(
                 "launch/object_detection.launch.py",
             ],
         ),
-        ("share/" + package_name + "/config", ["config/object_detection.yaml"]),
+        (
+            "share/" + package_name + "/config",
+            [
+                "config/object_detection.yaml",
+                "config/follow_wheels.yaml",
+            ],
+        ),
         (
             "share/" + package_name + "/models",
             [

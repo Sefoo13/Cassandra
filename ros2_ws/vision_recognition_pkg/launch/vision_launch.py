@@ -20,7 +20,8 @@ def generate_launch_description():
             name='object_detector',
             output='screen',
             parameters=[
-                os.path.join(package_share, 'config', 'object_detection.yaml')
+                os.path.join(package_share, 'config', 'object_detection.yaml'),
+                os.path.join(package_share, 'config', 'follow_wheels.yaml'),
             ],
         ),
 

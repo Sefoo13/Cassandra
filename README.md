@@ -98,11 +98,20 @@ Supported examples:
 назад / їдь назад
 поверни ліворуч / праворуч
 стоп / стій / зупинись
+слідкуй / слідкуй головою
+переслідуй / слідкуй колесами / їдь за мною
 ```
 
 Movement uses fixed low speeds for one second by default. `стоп` is always
 accepted and immediately publishes a zero velocity. Execution status is
 published on `/voice/command_status` for Foxglove.
+
+Wheel following tracks the selected person in the camera image, turns to keep
+them centered, and moves forward until the configured target distance is
+reached. It only moves forward when a valid depth measurement is available,
+stops immediately when the person is lost, and never reverses automatically.
+Its speed and distance safety limits are configured in
+`vision_recognition_pkg/config/follow_wheels.yaml`.
 
 Before testing on physical wheels, raise the robot or otherwise prevent it
 from moving unexpectedly. Commands can be tested by publishing text directly:

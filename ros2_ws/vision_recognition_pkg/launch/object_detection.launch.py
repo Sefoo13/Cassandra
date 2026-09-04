@@ -21,7 +21,12 @@ def generate_launch_description():
                         package_share,
                         "config",
                         "object_detection.yaml",
-                    )
+                    ),
+                    os.path.join(
+                        package_share,
+                        "config",
+                        "follow_wheels.yaml",
+                    ),
                 ],
             )
         ]

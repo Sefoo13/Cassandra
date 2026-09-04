@@ -14,6 +14,7 @@ from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CompressedImage, Image
+from geometry_msgs.msg import Twist
 from std_msgs.msg import Bool, Int32MultiArray, String
 
 try:
@@ -230,41 +231,10 @@ class ObjectDetector(Node):
     """Run TensorRT YOLOv5 and publish annotated and structured detections."""
 
     def __init__(self):
-        super().__init__("object_detector")
-        self.declare_parameter(
-            "input_topic",
-            "/camera/realsense2_camera/color/image_raw/compressed",
+        super().__init__(
+            "object_detector",
+            automatically_declare_parameters_from_overrides=True,
         )
-        self.declare_parameter(
-            "depth_topic",
-            "/camera/realsense2_camera/aligned_depth_to_color/image_raw",
-        )
-        self.declare_parameter("annotated_topic", "/vision/objects")
-        self.declare_parameter("detections_topic", "/vision/detections")
-        self.declare_parameter("model_path", "")
-        self.declare_parameter("confidence_threshold", 0.35)
-        self.declare_parameter("iou_threshold", 0.45)
-        self.declare_parameter("max_fps", 30.0)
-        self.declare_parameter("jpeg_quality", 85)
-        self.declare_parameter("tracking_iou_threshold", 0.3)
-        self.declare_parameter("tracking_max_age_seconds", 1.0)
-        self.declare_parameter("follow_person_enabled", False)
-        self.declare_parameter(
-            "follow_enabled_topic", "/vision/follow_person_enabled"
-        )
-        self.declare_parameter(
-            "servo_raw_command_topic", "/ros_cassandra/servos/raw_commands"
-        )
-        self.declare_parameter("head_yaw_servo_id", 10)
-        self.declare_parameter("head_yaw_center_raw", 460)
-        self.declare_parameter("head_yaw_left_raw", 300)
-        self.declare_parameter("head_yaw_right_raw", 700)
-        self.declare_parameter("follow_min_confidence", 0.5)
-        self.declare_parameter("follow_dead_zone_ratio", 0.15)
-        self.declare_parameter("follow_smoothing_factor", 0.25)
-        self.declare_parameter("follow_min_raw_step", 8)
-        self.declare_parameter("follow_command_interval_seconds", 0.15)
-        self.declare_parameter("follow_lost_timeout_seconds", 2.0)
 
         if trt is None or cuda is None:
             raise RuntimeError(
@@ -279,6 +249,10 @@ class ObjectDetector(Node):
         follow_enabled_topic = str(
             self.get_parameter("follow_enabled_topic").value
         )
+        follow_wheels_enabled_topic = str(
+            self.get_parameter("follow_wheels_enabled_topic").value
+        )
+        cmd_vel_topic = str(self.get_parameter("cmd_vel_topic").value)
         servo_raw_command_topic = str(
             self.get_parameter("servo_raw_command_topic").value
         )
@@ -308,6 +282,9 @@ class ObjectDetector(Node):
         )
         self._follow_person_enabled = bool(
             self.get_parameter("follow_person_enabled").value
+        )
+        self._follow_wheels_enabled = bool(
+            self.get_parameter("follow_wheels_enabled").value
         )
         self._follow_min_confidence = min(
             1.0,
@@ -355,6 +332,26 @@ class ObjectDetector(Node):
             0.5,
             float(self.get_parameter("follow_lost_timeout_seconds").value),
         )
+        self._wheel_target_distance = max(
+            0.1, float(self.get_parameter("wheel_target_distance_m").value)
+        )
+        self._wheel_distance_dead_zone = max(
+            0.0,
+            float(self.get_parameter("wheel_distance_dead_zone_m").value),
+        )
+        self._wheel_min_safe_distance = max(
+            0.1,
+            float(self.get_parameter("wheel_min_safe_distance_m").value),
+        )
+        self._wheel_max_linear_speed = abs(
+            float(self.get_parameter("wheel_max_linear_speed").value)
+        )
+        self._wheel_max_angular_speed = abs(
+            float(self.get_parameter("wheel_max_angular_speed").value)
+        )
+        self._wheel_steering_gain = abs(
+            float(self.get_parameter("wheel_steering_gain").value)
+        )
         self._last_processed_at = 0.0
         self._last_inference_finished_at = 0.0
         self._processing_fps = 0.0
@@ -375,6 +372,7 @@ class ObjectDetector(Node):
         self._last_head_raw = None
         self._smoothed_head_raw = float(self._head_yaw_center_raw)
         self._follow_status = "waiting"
+        self._last_wheel_command = (0.0, 0.0)
 
         configured_model = str(self.get_parameter("model_path").value).strip()
         model_path = configured_model or os.path.join(
@@ -394,10 +392,19 @@ class ObjectDetector(Node):
         self._servo_raw_publisher = self.create_publisher(
             Int32MultiArray, servo_raw_command_topic, 10
         )
+        self._velocity_publisher = self.create_publisher(
+            Twist, cmd_vel_topic, 10
+        )
         self._follow_enabled_subscription = self.create_subscription(
             Bool,
             follow_enabled_topic,
             self._on_follow_enabled,
+            10,
+        )
+        self._follow_wheels_enabled_subscription = self.create_subscription(
+            Bool,
+            follow_wheels_enabled_topic,
+            self._on_follow_wheels_enabled,
             10,
         )
         self._subscription = self.create_subscription(
@@ -609,7 +616,7 @@ class ObjectDetector(Node):
         return round(float(np.median(valid)), 2)
 
     def _update_person_following(self, detections, frame_shape, now):
-        if not self._follow_person_enabled:
+        if not self._follow_person_enabled and not self._follow_wheels_enabled:
             self._follow_status = "disabled"
             return
 
@@ -639,6 +646,7 @@ class ObjectDetector(Node):
             self._followed_track_id = followed_person["track_id"]
 
         if followed_person is None:
+            self._publish_wheel_velocity(0.0, 0.0)
             if (
                 self._followed_track_id is not None
                 and now - self._last_person_seen_at >= self._follow_lost_timeout
@@ -655,6 +663,9 @@ class ObjectDetector(Node):
         self._last_person_seen_at = now
         frame_width = max(1, frame_shape[1])
         center_ratio = followed_person["center"]["x"] / frame_width
+        if self._follow_wheels_enabled:
+            self._update_wheel_following(followed_person, center_ratio)
+            return
         left_boundary = 0.5 - self._follow_dead_zone
         right_boundary = 0.5 + self._follow_dead_zone
         if center_ratio < left_boundary:
@@ -681,6 +692,58 @@ class ObjectDetector(Node):
             f"person #{self._followed_track_id} {direction}"
         )
         self._publish_head_raw(round(self._smoothed_head_raw), now)
+
+    def _update_wheel_following(self, person, center_ratio):
+        """Drive toward the tracked person while keeping a safe distance."""
+        horizontal_error = 0.5 - center_ratio
+        angular_z = max(
+            -self._wheel_max_angular_speed,
+            min(
+                self._wheel_max_angular_speed,
+                self._wheel_steering_gain * horizontal_error,
+            ),
+        )
+        if abs(horizontal_error) <= self._follow_dead_zone:
+            angular_z = 0.0
+
+        distance = person.get("")
+        linear_x = 0.0
+        distance_status = "no depth"
+        if distance is not None:
+            if distance <= self._wheel_min_safe_distance:
+                distance_status = "too close"
+            else:
+                distance_error = distance - self._wheel_target_distance
+                if abs(distance_error) <= self._wheel_distance_dead_zone:
+                    distance_status = "at distance"
+                elif distance_error > 0.0:
+                    linear_x = min(
+                        self._wheel_max_linear_speed,
+                        0.5 * distance_error,
+                    )
+                    distance_status = "approaching"
+                else:
+                    distance_status = "close"
+
+        # Do not advance quickly while the target is far off the camera axis.
+        alignment = max(0.0, 1.0 - abs(horizontal_error) * 2.0)
+        linear_x *= alignment
+        self._publish_wheel_velocity(linear_x, angular_z)
+        self._follow_status = (
+            f"wheels person #{person['track_id']} {distance_status}"
+        )
+
+    def _publish_wheel_velocity(self, linear_x, angular_z, force=False):
+        command = (float(linear_x), float(angular_z))
+        if not force and command == self._last_wheel_command:
+            # Re-publish non-zero commands so the diff-drive watchdog stays fed.
+            if command == (0.0, 0.0):
+                return
+        message = Twist()
+        message.linear.x = command[0]
+        message.angular.z = command[1]
+        self._velocity_publisher.publish(message)
+        self._last_wheel_command = command
 
     def _publish_head_raw(self, raw_position, now, force=False):
         raw_position = max(
@@ -719,6 +782,24 @@ class ObjectDetector(Node):
             force=True,
         )
         self.get_logger().info("Person following disabled")
+
+    def _on_follow_wheels_enabled(self, message):
+        self._follow_wheels_enabled = bool(message.data)
+        self._followed_track_id = None
+        if self._follow_wheels_enabled:
+            self._follow_status = "wheels waiting"
+            self._publish_head_raw(
+                self._head_yaw_center_raw,
+                time.monotonic(),
+                force=True,
+            )
+            self.get_logger().info("Wheel person following enabled")
+            return
+        self._publish_wheel_velocity(0.0, 0.0, force=True)
+        self._follow_status = (
+            "waiting" if self._follow_person_enabled else "disabled"
+        )
+        self.get_logger().info("Wheel person following disabled")
 
     @staticmethod
     def _draw_detections(frame, detections):
@@ -917,10 +998,22 @@ class ObjectDetector(Node):
                     "cpu_load_percent": self._cpu_load_percent,
                 },
                 "person_following": {
-                    "enabled": self._follow_person_enabled,
+                    "enabled": (
+                        self._follow_person_enabled
+                        or self._follow_wheels_enabled
+                    ),
+                    "mode": (
+                        "wheels"
+                        if self._follow_wheels_enabled
+                        else "head" if self._follow_person_enabled else "off"
+                    ),
                     "track_id": self._followed_track_id,
                     "status": self._follow_status,
                     "head_yaw_raw": self._last_head_raw,
+                    "wheel_command": {
+                        "linear_x": self._last_wheel_command[0],
+                        "angular_z": self._last_wheel_command[1],
+                    },
                 },
                 "count": len(detections),
                 "detections": detections,
@@ -928,6 +1021,10 @@ class ObjectDetector(Node):
             ensure_ascii=False,
         )
         self._detections_publisher.publish(output)
+
+    def destroy_node(self):
+        self._publish_wheel_velocity(0.0, 0.0, force=True)
+        return super().destroy_node()
 
     def _publish_annotated_image(self, source_message, frame):
         encoded, data = cv2.imencode(

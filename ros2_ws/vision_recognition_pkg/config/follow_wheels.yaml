@@ -1,0 +1,13 @@
+/object_detector:
+  ros__parameters:
+    follow_wheels_enabled: false
+    follow_wheels_enabled_topic: /vision/follow_person_wheels_enabled
+    cmd_vel_topic: /diff_controller/cmd_vel_unstamped
+
+    # Distance and motion limits for person following with the wheel base.
+    wheel_target_distance_m: 1.5
+    wheel_distance_dead_zone_m: 0.2
+    wheel_min_safe_distance_m: 0.7
+    wheel_max_linear_speed: 0.15
+    wheel_max_angular_speed: 0.5
+    wheel_steering_gain: 1.2
